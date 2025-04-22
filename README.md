@@ -1,70 +1,111 @@
-# Getting Started with Create React App
+# DemoSolar AI Agent System
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This is a prototype for a business-oriented AI agent system designed for solar panel installation companies. The system enables customers to interact with different specialized AI agents through a chatbot interface.
 
-## Available Scripts
+## Project Structure
 
-In the project directory, you can run:
+The project is organized as a fullstack JavaScript/TypeScript application:
 
-### `npm start`
+```
+demosolar/
+├── frontend/           # React frontend
+│   ├── src/
+│   │   ├── components/  # Reusable UI components
+│   │   ├── pages/       # Page components
+│   │   ├── styles/      # CSS files
+│   │   └── ...
+│   └── ...
+└── backend/            # Node.js/Express backend
+    ├── src/
+    │   ├── agents/      # AI agent modules
+    │   ├── routes/      # API routes
+    │   ├── models/      # Type definitions
+    │   ├── utils/       # Utility functions
+    │   └── index.ts     # Server entry point
+    └── ...
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Features
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Frontend
+- **Homepage**: Showcases the solar panel company's services and benefits
+- **Chatbot**: Floating chat interface for customer interactions
+- **CRM Dashboard**: Admin view of quotes, appointments, and customer interactions
+- **Mock Login**: Simple demonstration login (no real authentication)
 
-### `npm test`
+### Backend
+- **AI Agent System**: Routes customer inquiries to specialized agents
+  - **Info Agent**: Answers common questions from a FAQ database
+  - **Offer Agent**: Generates custom solar panel installation quotes
+  - **Intake Agent**: Schedules consultation appointments
+- **API Endpoints**:
+  - `/api/ask`: Main endpoint for chatbot queries
+  - `/api/crm/...`: Endpoints for the CRM dashboard
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Getting Started
 
-### `npm run build`
+### Prerequisites
+- Node.js (v14 or later)
+- npm or yarn
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Installation
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+1. Clone the repository
+```
+git clone <repository-url>
+cd demosolar
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+2. Install dependencies for both frontend and backend
+```
+# Install frontend dependencies
+cd frontend
+npm install
 
-### `npm run eject`
+# Install backend dependencies
+cd ../backend
+npm install
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+3. Start the development servers
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+In one terminal:
+```
+# Start the backend server
+cd backend
+npm run dev
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+In another terminal:
+```
+# Start the frontend server
+cd frontend
+npm start
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+4. Open your browser and navigate to `http://localhost:3000`
 
-## Learn More
+## Usage
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Customer Experience
+- Visit the homepage and interact with the chatbot
+- Ask questions about solar panels
+- Request a quote by specifying how many solar panels you want
+- Schedule a consultation appointment
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Admin Dashboard
+- Click "Login" in the navbar (any username/password combination works)
+- View the CRM dashboard with tabs for:
+  - Quotes: See all generated quotes
+  - Appointments: View scheduled consultations
+  - Interactions: Review all customer conversations
 
-### Code Splitting
+## Development Notes
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+- The backend uses in-memory storage for this prototype. In a production environment, you would integrate with a database.
+- Email functionality is mocked in the `intakeAgent.ts` file. Uncomment and configure the nodemailer code for actual email sending.
+- The different agents use simple keyword matching for this prototype. In a real application, you would integrate with more sophisticated NLP/LLM services.
 
-### Analyzing the Bundle Size
+## License
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+This project is licensed under the MIT License - see the LICENSE file for details.
