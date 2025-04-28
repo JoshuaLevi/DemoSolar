@@ -5,12 +5,13 @@ import '../styles/Chatbot.css';
 function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hi there! I\'m your DemoSolar assistant. How can I help you today?' }
+    { role: 'assistant', content: 'Hi there! I\'m your DemoSolar assistant. How can I help you today? To save your quotes and appointments, I\'ll need your email, but you can skip that for now.' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [isEmailSet, setIsEmailSet] = useState(false);
+  const [emailSkipped, setEmailSkipped] = useState(false);
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom of messages
@@ -26,13 +27,21 @@ function Chatbot() {
     setIsOpen(!isOpen);
   };
 
+  const skipEmail = () => {
+    setEmailSkipped(true);
+    setMessages(prev => [
+      ...prev,
+      { role: 'assistant', content: 'No problem! You can continue without providing an email. How can I help you with solar energy today?' }
+    ]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!input.trim()) return;
     
-    // If email is not set, check if the current message is an email
-    if (!isEmailSet) {
+    // If email is not set and not skipped, check if the current message is an email
+    if (!isEmailSet && !emailSkipped) {
       const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
       if (emailRegex.test(input.trim())) {
         setEmail(input.trim());
@@ -49,7 +58,7 @@ function Chatbot() {
         setMessages(prev => [
           ...prev, 
           { role: 'user', content: input },
-          { role: 'assistant', content: 'Before we continue, could you please provide your email address so we can better assist you?' }
+          { role: 'assistant', content: 'To better assist you and save your information, could you please provide your email address? Or you can click "Skip" to continue without an email.' }
         ]);
         setInput('');
         return;
@@ -66,7 +75,7 @@ function Chatbot() {
       // Send the message to the backend
       const response = await axios.post('/api/ask', {
         message: userMessage,
-        userEmail: email
+        userEmail: email || 'anonymous'
       });
       
       // Add the assistant response to chat
@@ -160,12 +169,21 @@ function Chatbot() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isEmailSet ? "Type your message..." : "Please enter your email..."}
+              placeholder={!isEmailSet && !emailSkipped ? "Please enter your email..." : "Type your message..."}
               disabled={loading}
             />
             <button type="submit" disabled={loading || !input.trim()}>
               Send
             </button>
+            {!isEmailSet && !emailSkipped && (
+              <button 
+                type="button" 
+                className="skip-button"
+                onClick={skipEmail}
+              >
+                Skip
+              </button>
+            )}
           </form>
         </div>
       )}

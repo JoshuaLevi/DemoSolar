@@ -26,14 +26,31 @@ const determineAgentType = (message: string): AgentType => {
     return 'intake';
   }
   
-  // Check if this is an offer/quote request
+  // Check if this is clearly an information-seeking query
   if (
-    lowerMessage.includes('quote') || 
-    lowerMessage.includes('price') || 
-    lowerMessage.includes('cost') || 
-    lowerMessage.includes('offer') ||
-    lowerMessage.includes('solar panel') ||
-    lowerMessage.includes('install')
+    lowerMessage.includes('how') || 
+    lowerMessage.includes('what') || 
+    lowerMessage.includes('why') || 
+    lowerMessage.includes('when') || 
+    lowerMessage.includes('where') || 
+    lowerMessage.includes('who') ||
+    lowerMessage.includes('which') ||
+    lowerMessage.includes('can you tell me') ||
+    lowerMessage.includes('i want to know')
+  ) {
+    return 'info';
+  }
+  
+  // Check if this is an offer/quote request with stronger indicators
+  if (
+    (lowerMessage.includes('quote') || 
+     lowerMessage.includes('price') || 
+     lowerMessage.includes('cost') || 
+     lowerMessage.includes('offer') ||
+     (lowerMessage.includes('how much') && 
+      (lowerMessage.includes('solar panel') || lowerMessage.includes('install')))) ||
+    ((lowerMessage.includes('solar panel') || lowerMessage.includes('install')) &&
+     (lowerMessage.includes('my') || lowerMessage.includes('for me') || lowerMessage.includes('for my')))
   ) {
     return 'offer';
   }
@@ -73,7 +90,8 @@ export const handleUserQuery = async (message: string, userEmail?: string) => {
     response: response.text,
     agentType,
     userEmail: userEmail || 'anonymous',
-    data: response.data || {}
+    data: response.data || {},
+    conversationId: `conv-${Date.now()}`
   };
   
   crmDatabase.push(crmEntry);

@@ -1,7 +1,7 @@
 import express from 'express';
 import { getCRMEntries } from '../agents/mainAgent';
 import { getAllOffers } from '../agents/offerAgent';
-import { getAllAppointments } from '../agents/intakeAgent';
+import { getAllAppointments, addCalendarAppointment, getAvailableTimeSlotsForDate } from '../agents/intakeAgent';
 
 const router = express.Router();
 
@@ -34,6 +34,50 @@ router.get('/appointments', (req, res) => {
     return res.status(200).json(appointments);
   } catch (error) {
     console.error('Error fetching appointments:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get available time slots for a specific date
+router.get('/available-slots', (req, res) => {
+  try {
+    const { date } = req.query;
+    
+    if (!date || typeof date !== 'string') {
+      return res.status(400).json({ error: 'Date parameter is required in format YYYY-MM-DD' });
+    }
+    
+    const availableSlots = getAvailableTimeSlotsForDate(date);
+    return res.status(200).json(availableSlots);
+  } catch (error) {
+    console.error('Error fetching available slots:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Add a new appointment from the calendar
+router.post('/appointments', (req, res) => {
+  try {
+    const { title, start, end, customer, phone, notes, type } = req.body;
+    
+    if (!start || !customer) {
+      return res.status(400).json({ error: 'Start time and customer email are required' });
+    }
+    
+    // Convert to format expected by intake agent
+    const appointment = addCalendarAppointment({
+      title,
+      scheduledTime: new Date(start).toISOString(),
+      endTime: new Date(end).toISOString(),
+      userEmail: customer,
+      phoneNumber: phone,
+      notes,
+      appointmentType: type || 'virtual'
+    });
+    
+    return res.status(201).json(appointment);
+  } catch (error) {
+    console.error('Error creating appointment:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

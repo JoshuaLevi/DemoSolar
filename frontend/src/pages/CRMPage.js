@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import '../styles/CRMPage.css';
+import AppointmentCalendar from '../components/Calendar';
 
 function CRMPage() {
-  const [activeTab, setActiveTab] = useState('offers');
+  const [activeTab, setActiveTab] = useState('calendar');
   const [offers, setOffers] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -65,6 +66,18 @@ function CRMPage() {
     }
 
     switch (activeTab) {
+      case 'calendar':
+        return (
+          <div className="calendar-view">
+            <h3>Appointment Calendar</h3>
+            <p className="calendar-instructions">
+              View, add, and manage appointments. Click on a time slot to create a new appointment
+              or click on an existing appointment to view details.
+            </p>
+            <AppointmentCalendar aiAppointments={appointments} />
+          </div>
+        );
+      
       case 'offers':
         return (
           <div className="offers-table">
@@ -192,6 +205,12 @@ function CRMPage() {
       </div>
       
       <div className="tabs">
+        <button 
+          className={`tab-button ${activeTab === 'calendar' ? 'active' : ''}`}
+          onClick={() => setActiveTab('calendar')}
+        >
+          Calendar
+        </button>
         <button 
           className={`tab-button ${activeTab === 'offers' ? 'active' : ''}`}
           onClick={() => setActiveTab('offers')}

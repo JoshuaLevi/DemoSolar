@@ -111,23 +111,32 @@
 }
 
 .chat-input button {
-  background-color: #1a5276;
+  background-color: #007bff;
   color: white;
   border: none;
+  padding: 8px 16px;
   border-radius: 20px;
-  padding: 10px 15px;
-  margin-left: 10px;
   cursor: pointer;
-  transition: background-color 0.3s;
+  font-weight: bold;
+  transition: background-color 0.2s;
 }
 
 .chat-input button:hover {
-  background-color: #154360;
+  background-color: #0056b3;
 }
 
 .chat-input button:disabled {
-  background-color: #95a5a6;
+  background-color: #cccccc;
   cursor: not-allowed;
+}
+
+.skip-button {
+  margin-left: 8px;
+  background-color: #6c757d !important;
+}
+
+.skip-button:hover {
+  background-color: #5a6268 !important;
 }
 
 /* Offer and appointment message styling */
