@@ -89,9 +89,13 @@ function AppointmentCalendar({ aiAppointments = [] }) {
       setLoadingSlots(true);
       const formattedDate = moment(date).format('YYYY-MM-DD');
       const response = await axios.get(`/api/crm/available-slots?date=${formattedDate}`);
-      setAvailableSlots(response.data);
+      
+      // Ensure we always set an array, even if the API returns undefined or null
+      const slotsData = response.data || [];
+      setAvailableSlots(Array.isArray(slotsData) ? slotsData : []);
     } catch (error) {
       console.error('Error fetching available slots:', error);
+      setAvailableSlots([]); // Set empty array on error
     } finally {
       setLoadingSlots(false);
     }
@@ -138,7 +142,7 @@ function AppointmentCalendar({ aiAppointments = [] }) {
   
   // Check if a time slot is available
   const isTimeSlotAvailable = (time) => {
-    if (availableSlots.length === 0) return true;
+    if (!availableSlots || !Array.isArray(availableSlots) || availableSlots.length === 0) return true;
     
     const hour = new Date(time).getHours();
     const matchingSlot = availableSlots.find(slot => slot.hour === hour);

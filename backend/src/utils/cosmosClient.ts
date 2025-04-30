@@ -11,6 +11,8 @@ const containerName = process.env.AZURE_COSMOS_DB_CONTAINER_NAME || "conversatio
 const assessmentsContainerName = "assessments"; // Define the new container name
 const proposalsContainerName = "proposals"; // Define the proposals container name
 const appointmentsContainerName = "appointments"; // Define the appointments container name
+const usersContainerName = "users"; // Define the users container name
+const feedbackContainerName = "feedback"; // Define the feedback container name
 
 // Validate the connection string
 if (!connectionString) {
@@ -32,14 +34,18 @@ const container = database.container(containerName);
 const assessmentsContainer = database.container(assessmentsContainerName); // Get reference to assessments container
 const proposalsContainer = database.container(proposalsContainerName); // Get reference to proposals container
 const appointmentsContainer = database.container(appointmentsContainerName); // Get reference to appointments container
+const usersContainer = database.container(usersContainerName); // Get reference to users container
+const feedbackContainer = database.container(feedbackContainerName); // Get reference to feedback container
 
 console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${containerName}'`);
 console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${assessmentsContainerName}'`);
 console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${proposalsContainerName}'`);
 console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${appointmentsContainerName}'`); // Add log
+console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${usersContainerName}'`); // Add log
+console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${feedbackContainerName}'`); // Add log
 
 // Export the container instance for use in other parts of the application
-export { container, database, cosmosClient, assessmentsContainer, proposalsContainer, appointmentsContainer }; // Add appointmentsContainer to exports
+export { container, database, cosmosClient, assessmentsContainer, proposalsContainer, appointmentsContainer, usersContainer, feedbackContainer }; // Add feedbackContainer to exports
 
 // Optional: Add a function to ensure database and container exist (useful for first run)
 // async function ensureDbAndContainerExist() {

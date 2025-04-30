@@ -1,6 +1,9 @@
 import { AgentResponse, Appointment } from '../models/types';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
+// Import Cosmos DB client for appointments
+import { appointmentsContainer } from '../utils/cosmosClient';
+import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
 
 dotenv.config();
 
@@ -13,8 +16,8 @@ const azureOpenAIApiVersion = process.env.AZURE_OPENAI_API_VERSION || '2023-05-1
 // Check if Azure OpenAI is properly configured
 const isAzureOpenAIConfigured = !!(azureOpenAIKey && azureOpenAIEndpoint && azureOpenAIDeploymentName);
 
-// In-memory database for appointments
-let appointments: Appointment[] = [];
+// --- Remove In-Memory Storage ---
+// let appointments: Appointment[] = [];
 
 // Function to make Azure OpenAI API calls
 async function callAzureOpenAI(messages: Array<{role: string, content: string}>, options = { temperature: 0.7, maxTokens: 400 }) {
@@ -81,7 +84,7 @@ const extractAppointmentInfo = (message: string): {
       if (match[0].toLowerCase().includes('tomorrow')) {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
-        info.date = tomorrow.toLocaleDateString();
+        info.date = tomorrow.toLocaleDateString(); // Use locale date string for parsing later
       } else if (match[0].toLowerCase().includes('day after tomorrow')) {
         const dayAfter = new Date();
         dayAfter.setDate(dayAfter.getDate() + 2);
@@ -91,7 +94,9 @@ const extractAppointmentInfo = (message: string): {
         nextWeek.setDate(nextWeek.getDate() + 7);
         info.date = nextWeek.toLocaleDateString();
       } else if (match[1]) {
-        info.date = match[1];
+          // Handle different potential date formats (e.g., MM/DD/YYYY, Month DD, YYYY)
+          // This might need more robust date parsing depending on expected inputs
+          info.date = match[0].replace(/^(on|for)\s+/i, ''); // Clean up prefix
       }
       break;
     }
@@ -108,62 +113,68 @@ const extractAppointmentInfo = (message: string): {
   const phonePattern = /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})/i;
   const phoneMatch = message.match(phonePattern);
   if (phoneMatch && phoneMatch[1]) {
-    info.phone = phoneMatch[1];
+    info.phone = phoneMatch[1].replace(/[-.\s]/g, ''); // Normalize phone number
   }
 
   // Extract name (simplistic approach)
-  const namePattern = /(?:my name is|this is) ([A-Z][a-z]+(?: [A-Z][a-z]+)?)/i;
+  const namePattern = /(?:my name is|this is) ([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i;
   const nameMatch = message.match(namePattern);
   if (nameMatch && nameMatch[1]) {
-    info.name = nameMatch[1];
+    info.name = nameMatch[1].trim();
   }
 
   // Extract location
-  const locationPattern = /(?:at|in) ([A-Za-z\s]+(?:,\s*[A-Za-z\s]+)?)/i;
+  const locationPattern = /(?:at|in) ([A-Za-z0-9\s.,#-]+)/i;
   const locationMatch = message.match(locationPattern);
-  if (locationMatch && locationMatch[1] && !timePattern.test(locationMatch[1])) {
-    info.location = locationMatch[1];
+  // Avoid matching times or simple prepositions
+  if (locationMatch && locationMatch[1] && 
+      !/^(am|pm|\d{1,2}(:\d{2})?)$/i.test(locationMatch[1].trim()) &&
+      locationMatch[1].trim().length > 3) { // Basic check for actual location
+    info.location = locationMatch[1].trim();
   }
 
   return info;
 };
 
-// Find available time slots for appointments
-const getAvailableTimeSlots = (requestedDate?: string): string[] => {
+// Find available time slots for appointments using Cosmos DB
+const getAvailableTimeSlots = async (requestedDate?: string): Promise<string[]> => {
   // Default to tomorrow if no date specified
   const date = requestedDate ? new Date(requestedDate) : new Date(Date.now() + 24 * 60 * 60 * 1000);
   
-  // Set the date to start of day to ensure proper comparison
-  const requestedDay = new Date(date.setHours(0, 0, 0, 0));
-  
+  // Get date in YYYY-MM-DD format for querying
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  const datePrefix = `${year}-${month}-${day}`;
+
   // Available hours (9am to 5pm, 1-hour slots)
-  const availableHours = [9, 10, 11, 13, 14, 15, 16, 17];
-  
-  // Filter out already booked slots
-  const bookedTimes = appointments
-    .filter(a => {
-      const aptDate = new Date(a.scheduledTime);
-      return aptDate.toDateString() === requestedDay.toDateString();
-    })
-    .map(a => new Date(a.scheduledTime).getHours());
-  
-  // Look for any existing appointments scheduled through the calendar system
-  // In a real-world implementation, this would check a database or external calendar API
-  
-  const availableSlots = availableHours
-    .filter(hour => !bookedTimes.includes(hour))
-    .map(hour => {
-      const slot = new Date(requestedDay);
-      slot.setHours(hour, 0, 0, 0);
-      return {
-        time: `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`,
-        hour: hour,
-        date: slot.toISOString()
+  const availableHours = [9, 10, 11, 13, 14, 15, 16, 17]; // Skip 12 PM (lunch)
+
+  try {
+      // Query Cosmos DB for appointments starting on the requested date
+      const querySpec = {
+          query: "SELECT c.scheduledTime FROM c WHERE STARTSWITH(c.scheduledTime, @datePrefix)",
+          parameters: [
+              { name: "@datePrefix", value: datePrefix }
+          ]
       };
-    });
-  
-  // Convert to formatted strings for display
-  return availableSlots.map(slot => slot.time);
+
+      const { resources: bookedAppointments } = await appointmentsContainer.items.query<{ scheduledTime: string }>(querySpec).fetchAll();
+      const bookedHours = bookedAppointments.map(a => new Date(a.scheduledTime).getHours());
+
+      // Filter available hours based on booked slots
+      const availableSlots = availableHours
+          .filter(hour => !bookedHours.includes(hour))
+          .map(hour => {
+              return `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`;
+          });
+
+      return availableSlots;
+
+  } catch (error) {
+      console.error(`Error fetching available slots for ${datePrefix} from Cosmos DB:`, error);
+      return []; // Return empty array on error
+  }
 };
 
 // Get available days for appointments in the next week
@@ -192,13 +203,14 @@ const getAvailableDays = (): { date: Date; dateString: string }[] => {
 };
 
 // Get a list of specific available timeslots for multiple days
-const getSuggestedAppointmentSlots = (): string[] => {
+const getSuggestedAppointmentSlots = async (): Promise<string[]> => {
   const suggestions = [];
   const availableDays = getAvailableDays();
   
   // Get available times for each available day
   for (const day of availableDays) {
-    const availableTimes = getAvailableTimeSlots(day.date.toISOString());
+    // Fetch available times from Cosmos DB for this day
+    const availableTimes = await getAvailableTimeSlots(day.date.toISOString());
     
     // Only suggest a couple times per day to avoid overwhelming the user
     if (availableTimes.length > 0) {
@@ -224,43 +236,65 @@ const getSuggestedAppointmentSlots = (): string[] => {
   return suggestions;
 };
 
-// Schedule an appointment
-const scheduleAppointment = (
+// Schedule an appointment and save to Cosmos DB
+const scheduleAppointment = async (
   userEmail: string,
   date: string,
   time: string,
   info: { name?: string; phone?: string; location?: string }
-): Appointment => {
-  // Parse date and time strings
-  const dateObj = new Date(date);
-  
+): Promise<Appointment> => {
+  // Parse date and time strings robustly
+  let dateObj: Date;
+  try {
+      // Attempt to parse common date formats + the locale string from extraction
+      dateObj = new Date(date); 
+      if (isNaN(dateObj.getTime())) { // Check if parsing failed
+          throw new Error('Invalid date format');
+      }
+  } catch (e) {
+      console.error(`Failed to parse date string: ${date}`);
+      throw new Error('Could not understand the provided date.');
+  }
+
   // Parse time (e.g., "10:00 AM")
   const timeParts = time.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
   if (timeParts) {
     let hours = parseInt(timeParts[1]);
     if (timeParts[3].toLowerCase() === 'pm' && hours < 12) hours += 12;
-    if (timeParts[3].toLowerCase() === 'am' && hours === 12) hours = 0;
+    if (timeParts[3].toLowerCase() === 'am' && hours === 12) hours = 0; // Midnight case
     
     const minutes = timeParts[2] ? parseInt(timeParts[2]) : 0;
     
+    // Set time on the parsed date object
     dateObj.setHours(hours, minutes, 0, 0);
+  } else {
+      throw new Error('Could not understand the provided time.');
   }
   
-  // Create appointment
+  // Create appointment object with unique ID
   const appointment: Appointment = {
-    id: `appt-${Date.now()}`,
+    id: `appt-${uuidv4()}`, // Use UUID for uniqueness
     timestamp: new Date().toISOString(),
-    scheduledTime: dateObj.toISOString(),
-    userEmail,
+    scheduledTime: dateObj.toISOString(), // Store as ISO string
+    userEmail, // Use userEmail as potential partition key?
     phoneNumber: info.phone,
     address: info.location,
     notes: info.name ? `Customer name: ${info.name}` : undefined,
-    appointmentType: 'virtual',
+    appointmentType: 'virtual', // Default or determine based on context/location
     status: 'scheduled'
   };
   
-  appointments.push(appointment);
-  return appointment;
+  // --- Save to Cosmos DB ---
+  try {
+      // Partition key could be userEmail or perhaps based on scheduledTime (e.g., YYYY-MM)
+      // Let's assume userEmail is the partition key for consistency with users container
+      const { resource: createdAppointment } = await appointmentsContainer.items.create(appointment);
+      console.log(`Saved appointment ${createdAppointment?.id} to Cosmos DB for user ${userEmail}.`);
+      return createdAppointment!; // Return the created appointment
+  } catch (dbError) {
+      console.error(`Error saving appointment ${appointment.id} to Cosmos DB:`, dbError);
+      throw dbError; // Re-throw the error to be caught by the handler
+  }
 };
 
 // Format appointment details for response
@@ -279,15 +313,20 @@ const formatAppointmentDetails = (appointment: Appointment): string => {
     hour12: true 
   });
 
+  // Include name if available in notes
+  const nameMatch = appointment.notes?.match(/Customer name: (.*)/i);
+  const customerName = nameMatch ? nameMatch[1] : 'there';
+
   return `
-Great! I've scheduled your appointment for ${formattedDate} at ${formattedTime}.
+Hi ${customerName}, your appointment is confirmed!
 
-Appointment Details:
-- Type: Virtual Consultation
-- Status: Confirmed
-${appointment.phoneNumber ? `- Contact Number: ${appointment.phoneNumber}` : ''}
+**Date:** ${formattedDate}
+**Time:** ${formattedTime}
+**Type:** ${appointment.appointmentType || 'Virtual Consultation'}
+**Status:** ${appointment.status}
+${appointment.phoneNumber ? `**Contact:** ${appointment.phoneNumber}` : ''}
 
-One of our solar consultants will contact you at the scheduled time. Is there anything specific you'd like to discuss during your consultation?
+One of our solar consultants will be ready for you. Let us know if you need to reschedule!
   `.trim();
 };
 
@@ -296,33 +335,32 @@ export const handleAppointmentBooking = async (message: string, userEmail?: stri
   try {
     // Extract appointment information
     const appointmentInfo = extractAppointmentInfo(message);
+    const effectiveUserEmail = userEmail || 'anonymous';
     
-    // If email is not provided, but we can still provide scheduling info
-    if (!userEmail || userEmail === 'anonymous') {
-      // Get suggested appointment slots from calendar
-      const suggestedSlots = getSuggestedAppointmentSlots();
-      const slotsText = suggestedSlots.join('\n• ');
+    // If email is not provided, prompt for it while showing slots
+    if (effectiveUserEmail === 'anonymous') {
+      const suggestedSlots = await getSuggestedAppointmentSlots(); // Now async
+      const slotsText = suggestedSlots.length > 0 ? suggestedSlots.join('\n• ') : 'No upcoming slots found.';
       
-      // Generate helpful response with email reminder
       return {
-        text: `I'd be happy to schedule a consultation for you. Here are some available time slots in our calendar:\n\n• ${slotsText}\n\nTo confirm your appointment, please choose one of these times and provide your email address.`,
-        type: 'text'
+        text: `To book a consultation, I need your email address. Once you provide it, I can show you available times. Currently, we have openings around:\n\n• ${slotsText}\n\nPlease provide your email to proceed.`,
+        type: 'text',
+        confidence: 0.80,
+        reasoning: "Prompting for email before scheduling, showing available slots."
       };
     }
     
-    // Check if we have enough information
+    // Check if we have enough information (date and time)
     if (!appointmentInfo.date || !appointmentInfo.time) {
-      // Get suggested appointment slots from calendar
-      const suggestedSlots = getSuggestedAppointmentSlots();
-      const slotsText = suggestedSlots.join('\n• ');
+      const suggestedSlots = await getSuggestedAppointmentSlots(); // Now async
+      const slotsText = suggestedSlots.length > 0 ? suggestedSlots.join('\n• ') : 'No upcoming slots found.';
       
       let missingInfo = [];
       if (!appointmentInfo.date) missingInfo.push("preferred date");
       if (!appointmentInfo.time) missingInfo.push("preferred time");
-      
       const missingInfoText = missingInfo.join(' and ');
       
-      // Generate response using Azure OpenAI if available
+      // Try using Azure OpenAI to formulate a response
       if (isAzureOpenAIConfigured) {
         const systemPrompt = `You are a helpful assistant for a solar company. The customer wants to schedule an appointment but is missing some information. Ask for the missing information politely and provide available time slots.`;
         
@@ -337,37 +375,44 @@ export const handleAppointmentBooking = async (message: string, userEmail?: stri
         if (responseText) {
           return {
             text: responseText,
-            type: 'text'
+            type: 'text',
+            confidence: 0.65,
+            reasoning: "Used Azure OpenAI to respond to an incomplete appointment request."
           };
         }
       }
       
-      // Fallback response
+      // Fallback response if OpenAI fails or not configured
       return {
-        text: `I'd be happy to schedule a consultation for you. Could you please let me know your ${missingInfoText}? Here are some available slots in our calendar:\n\n• ${slotsText}\n\nPlease let me know which time works best for you.`,
-        type: 'text'
+        text: `I need a bit more info to book your appointment. Could you please tell me the ${missingInfoText}? \nWe have availability around these times:\n\n• ${slotsText}\n\nLet me know what works best!`,
+        type: 'text',
+        confidence: 0.5,
+        reasoning: "Could not extract necessary date/time information, providing suggestions."
       };
     }
     
-    // Check if the requested slot is actually available
-    const requestedDate = new Date(appointmentInfo.date);
-    const availableSlots = getAvailableTimeSlots(requestedDate.toISOString());
-    const requestedTimeSlot = appointmentInfo.time.toUpperCase();
+    // Check if the requested slot is actually available using Cosmos DB check
+    const requestedDateString = new Date(appointmentInfo.date).toISOString();
+    const availableSlots = await getAvailableTimeSlots(requestedDateString);
+    const requestedTimeUpper = appointmentInfo.time.toUpperCase(); // Normalize requested time
     
-    if (!availableSlots.some(slot => slot.toUpperCase().includes(requestedTimeSlot))) {
-      // Get suggested appointment slots from calendar
-      const suggestedSlots = getSuggestedAppointmentSlots();
-      const slotsText = suggestedSlots.join('\n• ');
-      
+    // More robust check: ensure the exact formatted time exists
+    const isAvailable = availableSlots.some(slot => slot.toUpperCase() === requestedTimeUpper);
+
+    if (!isAvailable) {
+      const suggestedSlots = await getSuggestedAppointmentSlots(); // Now async
+      const slotsText = suggestedSlots.length > 0 ? suggestedSlots.join('\n• ') : 'no other slots currently open.';
       return {
-        text: `I'm sorry, but the time you requested (${appointmentInfo.time} on ${appointmentInfo.date}) is no longer available. Here are the current available slots in our calendar:\n\n• ${slotsText}\n\nPlease let me know which one of these times works for you.`,
-        type: 'text'
+        text: `Unfortunately, the time slot ${appointmentInfo.time} on ${appointmentInfo.date} is no longer available or invalid. We currently have openings around:\n\n• ${slotsText}\n\nPlease choose one of these.`,
+        type: 'text',
+        confidence: 0.9,
+        reasoning: "Requested appointment slot is not available based on current schedule."
       };
     }
     
-    // Schedule the appointment
-    const appointment = scheduleAppointment(
-      userEmail,
+    // Schedule the appointment (now async and saves to DB)
+    const appointment = await scheduleAppointment(
+      effectiveUserEmail,
       appointmentInfo.date,
       appointmentInfo.time,
       {
@@ -377,66 +422,85 @@ export const handleAppointmentBooking = async (message: string, userEmail?: stri
       }
     );
     
-    // Format the response
+    // Format the confirmation response
     const responseText = formatAppointmentDetails(appointment);
     
     return {
       text: responseText,
       type: 'appointment',
-      data: appointment
+      data: appointment,
+      confidence: 0.98,
+      reasoning: "Successfully scheduled the appointment and saved to database."
     };
-  } catch (error) {
+
+  } catch (error: any) { // Catch specific errors or generic any
     console.error('Error booking appointment:', error);
     
+    // Provide more specific feedback if possible
+    let errorMessage = "I apologize, but I encountered an issue while trying to book your appointment. Could you please try again or contact us directly for assistance?";
+    if (error.message?.includes('Could not understand')) {
+        errorMessage = `I had trouble understanding the ${error.message.includes('date') ? 'date' : 'time'} you provided. Can you please try formatting it differently (e.g., MM/DD/YYYY or 'Tomorrow at 2 PM')?`;
+    } else if (error.code) { // Cosmos DB errors often have a code
+        errorMessage = "Sorry, there was a problem saving your appointment. Please try again in a moment.";
+    }
+
     return {
-      text: "I apologize, but I encountered an issue while scheduling your appointment. Could you please try again with the date and time you'd prefer?",
-      type: 'text'
+      text: errorMessage,
+      type: 'text',
+      confidence: 0.4,
+      reasoning: `An internal error occurred: ${error.message || 'Unknown error'}`
     };
   }
 };
 
-// Get available time slots for a specific date (for API)
-export const getAvailableTimeSlotsForDate = (dateString: string): { time: string; hour: number; available: boolean }[] => {
+// --- getAvailableTimeSlotsForDate needs update for Cosmos DB ---
+export const getAvailableTimeSlotsForDate = async (dateString: string): Promise<{ time: string; hour: number; available: boolean }[]> => {
   const date = new Date(dateString);
   const daySlots = [];
-  
-  // Available hours (9am to 5pm, 1-hour slots)
-  const allHours = [9, 10, 11, 12, 13, 14, 15, 16, 17];
-  
-  // Find booked slots
-  const bookedHours = appointments
-    .filter(a => {
-      const aptDate = new Date(a.scheduledTime);
-      return aptDate.toDateString() === date.toDateString();
-    })
-    .map(a => new Date(a.scheduledTime).getHours());
-  
-  // Build the list of all slots with availability
-  for (const hour of allHours) {
-    const slot = new Date(date);
-    slot.setHours(hour, 0, 0, 0);
-    
-    // Skip lunch hour
-    if (hour === 12) {
-      daySlots.push({
-        time: `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`,
-        hour,
-        available: false
-      });
-    } else {
-      daySlots.push({
-        time: `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`,
-        hour,
-        available: !bookedHours.includes(hour)
-      });
+  const allHours = [9, 10, 11, 12, 13, 14, 15, 16, 17]; // Include lunch hour for display
+
+  try {
+    // Get date in YYYY-MM-DD format for querying
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const datePrefix = `${year}-${month}-${day}`;
+
+    const querySpec = {
+        query: "SELECT c.scheduledTime FROM c WHERE STARTSWITH(c.scheduledTime, @datePrefix)",
+        parameters: [
+            { name: "@datePrefix", value: datePrefix }
+        ]
+    };
+    const { resources: bookedAppointments } = await appointmentsContainer.items.query<{ scheduledTime: string }>(querySpec).fetchAll();
+    const bookedHours = bookedAppointments.map(a => new Date(a.scheduledTime).getHours());
+
+    // Build the list of all slots with availability
+    for (const hour of allHours) {
+        daySlots.push({
+            time: `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`,
+            hour,
+            available: hour !== 12 && !bookedHours.includes(hour) // Mark lunch (12) and booked slots as unavailable
+        });
     }
+    return daySlots;
+
+  } catch (error) {
+      console.error(`Error fetching slots for date ${dateString}:`, error);
+      // Return all slots as unavailable on error?
+      for (const hour of allHours) {
+          daySlots.push({
+              time: `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`,
+              hour,
+              available: false
+          });
+      }
+      return daySlots;
   }
-  
-  return daySlots;
 };
 
-// Add an appointment from the calendar UI
-export const addCalendarAppointment = (appointmentData: {
+// --- addCalendarAppointment needs update for Cosmos DB ---
+export const addCalendarAppointment = async (appointmentData: {
   title?: string;
   scheduledTime: string;
   endTime?: string;
@@ -444,10 +508,10 @@ export const addCalendarAppointment = (appointmentData: {
   phoneNumber?: string;
   notes?: string;
   appointmentType?: string;
-}): Appointment => {
-  // Create a new appointment
+}): Promise<Appointment> => {
+  // Create a new appointment object
   const appointment: Appointment = {
-    id: `appt-${Date.now()}`,
+    id: `appt-${uuidv4()}`,
     timestamp: new Date().toISOString(),
     scheduledTime: appointmentData.scheduledTime,
     userEmail: appointmentData.userEmail,
@@ -457,13 +521,30 @@ export const addCalendarAppointment = (appointmentData: {
     status: 'scheduled'
   };
   
-  // Add to the appointment store
-  appointments.push(appointment);
-  
-  return appointment;
+  // --- Save to Cosmos DB ---
+   try {
+      const { resource: createdAppointment } = await appointmentsContainer.items.create(appointment);
+      console.log(`Saved calendar appointment ${createdAppointment?.id} to Cosmos DB.`);
+      return createdAppointment!;
+  } catch (dbError) {
+      console.error(`Error saving calendar appointment ${appointment.id} to Cosmos DB:`, dbError);
+      throw dbError; // Re-throw to be handled by caller
+  }
 };
 
-// Export the appointments for admin dashboard
-export const getAllAppointments = (): Appointment[] => {
-  return appointments;
+// Export the appointments for admin dashboard (now queries Cosmos DB)
+export const getAllAppointments = async (limit: number = 100): Promise<Appointment[]> => {
+  try {
+    const querySpec = {
+      query: `SELECT * FROM c ORDER BY c.timestamp DESC OFFSET 0 LIMIT @limit`,
+      parameters: [
+        { name: '@limit', value: limit }
+      ]
+    };
+    const { resources } = await appointmentsContainer.items.query<Appointment>(querySpec).fetchAll();
+    return resources;
+  } catch (error) {
+    console.error('Error fetching appointments from Cosmos DB:', error);
+    return [];
+  }
 }; 

@@ -2,13 +2,26 @@ import React from 'react';
 import '../styles/HomePage.css';
 
 function HomePage() {
+  // Function to open chatbot without starting intake process
+  const handleConsultationClick = () => {
+    // Open the chatbot if it's not already open
+    const chatbotButton = document.querySelector('.chat-button');
+    if (chatbotButton) {
+      // If chatbot is closed, click it to open
+      if (!chatbotButton.classList.contains('open')) {
+        chatbotButton.click();
+      }
+      // We no longer automatically send a message
+    }
+  };
+
   return (
     <div className="home-page">
       <section className="hero">
         <div className="hero-content">
           <h1>Power Your Home with Clean Solar Energy</h1>
           <p>Save money and the planet with our cutting-edge solar panel solutions</p>
-          <button className="cta-button">Get a Free Quote</button>
+          <button className="cta-button" onClick={handleConsultationClick}>Plan a Free Consultation</button>
         </div>
       </section>
 

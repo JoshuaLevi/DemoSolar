@@ -1,6 +1,8 @@
 import { AgentResponse, Offer } from '../models/types';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
+// Import Cosmos DB client for proposals
+import { proposalsContainer } from '../utils/cosmosClient';
 
 dotenv.config();
 
@@ -13,12 +15,21 @@ const azureOpenAIApiVersion = process.env.AZURE_OPENAI_API_VERSION || '2023-05-1
 // Check if Azure OpenAI is properly configured
 const isAzureOpenAIConfigured = !!(azureOpenAIKey && azureOpenAIEndpoint && azureOpenAIDeploymentName);
 
-// In-memory database for offers
-let offers: Offer[] = [];
-
-// Export offers for the CRM dashboard
-export const getAllOffers = (): Offer[] => {
-  return offers;
+// Export offers for the CRM dashboard (now queries Cosmos DB)
+export const getAllOffers = async (limit: number = 100): Promise<Offer[]> => {
+  try {
+    const querySpec = {
+      query: `SELECT * FROM c ORDER BY c.timestamp DESC OFFSET 0 LIMIT @limit`,
+      parameters: [
+        { name: '@limit', value: limit }
+      ]
+    };
+    const { resources } = await proposalsContainer.items.query<Offer>(querySpec).fetchAll();
+    return resources;
+  } catch (error) {
+    console.error('Error fetching offers from Cosmos DB:', error);
+    return [];
+  }
 };
 
 // Constants for solar calculations
@@ -88,7 +99,7 @@ const extractSystemSize = (message: string): number | null => {
   return null;
 };
 
-// Create a solar offer with pricing
+// Create a solar offer with pricing and save to Cosmos DB
 const createOffer = async (message: string, userEmail?: string) => {
   try {
     // Extract system size or use default
@@ -112,9 +123,9 @@ const createOffer = async (message: string, userEmail?: string) => {
     const numberOfPayments = 25 * 12; // 25 years in months
     const monthlyLoanPayment = (systemCost * interestRate) / (1 - Math.pow(1 + interestRate, -numberOfPayments));
     
-    // Create offer object
+    // Create offer object with a proper ID for Cosmos DB
     const offer: Offer = {
-      id: `offer-${Date.now()}`,
+      id: `offer-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, // More unique ID
       timestamp: new Date().toISOString(),
       userEmail: userEmail || 'anonymous',
       solarPanelCount: panelCount,
@@ -122,12 +133,25 @@ const createOffer = async (message: string, userEmail?: string) => {
       estimatedSavings: annualSavings,
       estimatedInstallationTime: '2-3 days', 
       systemSize: systemSizeKW,
-      annualProduction: annualProduction
+      annualProduction: annualProduction,
+      // Add financing options and other details if calculated
     };
     
-    // Save to in-memory database
-    offers.push(offer);
-    
+    // --- Save to Cosmos DB ---
+    try {
+        // Partition key likely based on userEmail or potentially timestamp/ID
+        // Assuming userEmail is a good partition key candidate if users view their proposals.
+        // If anonymous, might use a default partition or partition by ID.
+        // Let's use userEmail as partition key for this example.
+        const { resource: createdOffer } = await proposalsContainer.items.create(offer);
+        console.log(`Saved offer ${createdOffer?.id} to Cosmos DB for user ${offer.userEmail}.`);
+    } catch (dbError) {
+        console.error(`Error saving offer ${offer.id} to Cosmos DB:`, dbError);
+        // Decide if this should prevent returning the offer data to the user.
+        // For now, log the error but continue.
+    }
+
+    // Return the calculated data including the ID used in the database
     return {
       ...offer,
       federalTaxCredit,
@@ -147,7 +171,7 @@ const createOffer = async (message: string, userEmail?: string) => {
 // Generate a customized offer response
 const generateOfferResponse = async (offerData: any, originalMessage: string): Promise<string> => {
   if (isAzureOpenAIConfigured) {
-    const systemPrompt = `You are a professional solar sales consultant. Create a personalized solar proposal based on the following offer data. Be friendly, professional, and persuasive without being pushy. Emphasize the benefits like saving money, environmental impact, and energy independence. Format the response nicely with sections and bullet points.`;
+    const systemPrompt = `You are a professional solar sales consultant for DemoSolar. Create a personalized solar proposal in **English** based on the following offer data. Be friendly, professional, and persuasive without being pushy. Emphasize the benefits like saving money, environmental impact, and energy independence. Format the response nicely with Markdown sections (using ## for main sections and ### for subsections) and bullet points. Ensure all monetary values are preceded by a dollar sign ($).`;
     
     const offerDataFormatted = JSON.stringify(offerData, null, 2);
     
@@ -171,12 +195,12 @@ const generateOfferResponse = async (offerData: any, originalMessage: string): P
 Based on your requirements, here's a personalized solar solution:
 
 ### System Details
-- **System Size**: ${offerData.systemSizeKW} kW (${offerData.panelCount} panels)
+- **System Size**: ${offerData.systemSize} kW (${offerData.solarPanelCount} panels) // Updated field names
 - **Estimated Annual Production**: ${offerData.annualProduction.toLocaleString()} kWh
-- **Estimated Installation Time**: 2-3 days
+- **Estimated Installation Time**: ${offerData.estimatedInstallationTime}
 
 ### Financial Benefits
-- **System Cost**: $${offerData.systemCost.toLocaleString()}
+- **System Cost**: $${offerData.estimatedCost.toLocaleString()}
 - **Federal Tax Credit**: $${offerData.federalTaxCredit.toLocaleString()}
 - **Net Cost After Incentives**: $${offerData.netCost.toLocaleString()}
 - **Estimated Monthly Savings**: $${offerData.monthlySavings.toFixed(2)}
@@ -193,35 +217,50 @@ Would you like to schedule a consultation to finalize your solar system design? 
 // Handle offer creation requests
 export const handleOfferCreation = async (message: string, userEmail?: string): Promise<AgentResponse> => {
   try {
-    // Create the offer even if the user is anonymous
-    const offerData = await createOffer(message, userEmail);
+    // Create the offer and save to Cosmos DB
+    const offerDataWithCalculations = await createOffer(message, userEmail);
     
-    // If email is not provided, but we need a quote-specific response
-    if (!userEmail || userEmail === 'anonymous') {
-      // Generate response with a gentle reminder about providing email
-      const responseText = await generateOfferResponse(offerData, message);
-      
-      return {
-        text: responseText + "\n\nNote: To save this quote for future reference, you can provide your email address in your next message.",
-        type: 'offer',
-        data: offerData
-      };
-    }
+    // Generate response text
+    const responseText = await generateOfferResponse(offerDataWithCalculations, message);
+
+    // Prepare the final response data (excluding extra calculation fields not in Offer type)
+    const responseData: Offer = {
+        id: offerDataWithCalculations.id,
+        timestamp: offerDataWithCalculations.timestamp,
+        userEmail: offerDataWithCalculations.userEmail,
+        solarPanelCount: offerDataWithCalculations.solarPanelCount,
+        estimatedCost: offerDataWithCalculations.estimatedCost,
+        estimatedSavings: offerDataWithCalculations.estimatedSavings,
+        estimatedInstallationTime: offerDataWithCalculations.estimatedInstallationTime,
+        systemSize: offerDataWithCalculations.systemSize,
+        annualProduction: offerDataWithCalculations.annualProduction,
+        // Copy other optional fields from Offer type if they exist in offerDataWithCalculations
+        roofType: offerDataWithCalculations.roofType,
+        panelType: offerDataWithCalculations.panelType,
+        financingOptions: offerDataWithCalculations.financingOptions,
+        assessmentId: offerDataWithCalculations.assessmentId,
+    };
     
-    // Generate response
-    const responseText = await generateOfferResponse(offerData, message);
-    
+    // Add reminder note if user is anonymous
+    const finalResponseText = (!userEmail || userEmail === 'anonymous')
+      ? responseText + "\n\nNote: To save this quote for future reference, you can provide your email address in your next message."
+      : responseText;
+
     return {
-      text: responseText,
+      text: finalResponseText,
       type: 'offer',
-      data: offerData
+      data: responseData, // Return only the Offer data structure
+      confidence: userEmail && userEmail !== 'anonymous' ? 0.95 : 0.9, // Adjust confidence based on email
+      reasoning: "Generated a personalized solar offer based on extracted or default system size and saved to database."
     };
   } catch (error) {
-    console.error('Error creating offer:', error);
+    console.error('Error handling offer creation:', error);
     
     return {
       text: "I apologize, but I encountered an issue while creating your solar quote. Would you like to try again or speak with one of our solar consultants directly?",
-      type: 'text'
+      type: 'text',
+      confidence: 0.4,
+      reasoning: "An internal error occurred while trying to generate the solar offer."
     };
   }
 }; 

@@ -58,7 +58,7 @@ You have deep knowledge about:
 - Maintenance requirements and warranties
 - Common concerns about solar (e.g., weather impact, roof compatibility)
 
-If the customer asks about specific pricing, quotes, or property assessment, indicate that you'll connect them with the Solar Assessment Agent who can provide more detailed information.
+If you cannot find an answer in the knowledge base or via web search and need to generate a response based on general knowledge, state this clearly and avoid promising to connect the user to a specific different agent for that query. You can ask if they would like to speak to a specialist in general if the topic warrants it.
 `;
 
 // Solar Assessment Agent system prompt

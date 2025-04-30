@@ -321,6 +321,16 @@ const createAppointment = async (
 ): Promise<Appointment> => {
   const appointmentId = uuidv4(); 
   
+  // Format the appointment reason if it's just a number
+  let formattedReason = contactInfo.appointmentReason || 'Not specified';
+  if (formattedReason === '1' || formattedReason === '1.') {
+    formattedReason = 'Solar panel installation consultation';
+  } else if (formattedReason === '2' || formattedReason === '2.') {
+    formattedReason = 'Energy efficiency assessment';
+  } else if (formattedReason === '3' || formattedReason === '3.') {
+    formattedReason = 'Maintenance or repair discussion';
+  }
+  
   const appointment: Appointment = {
     id: appointmentId,
     timestamp: new Date().toISOString(),
@@ -330,7 +340,8 @@ const createAppointment = async (
     appointmentType: appointmentType,
     address: contactInfo.address,
     phoneNumber: contactInfo.phoneNumber,
-    notes: `Customer name: ${contactInfo.name || 'Not provided'}\nReason: ${contactInfo.appointmentReason || 'Not specified'}`
+    notes: `Customer name: ${contactInfo.name || 'Not provided'}\nReason: ${formattedReason}`,
+    appointmentReason: formattedReason // Save the formatted reason here
   };
   
   // Save to Cosmos DB
@@ -638,6 +649,7 @@ interface CrmUpdatePayload {
     name?: string;
     phoneNumber?: string;
     address?: string;
+    reason?: string;
     // Add other editable fields if necessary
 }
 
@@ -684,6 +696,7 @@ export const handleCRM = async (
         if (updates.name !== undefined) nextState.name = updates.name;
         if (updates.phoneNumber !== undefined) nextState.phoneNumber = updates.phoneNumber;
         if (updates.address !== undefined) nextState.address = updates.address;
+        if (updates.reason !== undefined) nextState.appointmentReason = updates.reason;
         nextState.step = 'awaitingConfirmation';
         currentState = { ...nextState };
         console.log(`CRM State: Updated state after CRM update for ${conversationId}:`, nextState);
@@ -727,11 +740,12 @@ export const handleCRM = async (
                  if (currentUserInput && typeof currentUserInput === 'string') {
                      // Check if user entered a number 1-3 corresponding to our example reasons
                      let reason = currentUserInput.trim();
-                     if (reason === '1') {
+                     // Store the full reason text, not just the number
+                     if (reason === '1' || reason === '1.') {
                          reason = 'Solar panel installation consultation';
-                     } else if (reason === '2') {
+                     } else if (reason === '2' || reason === '2.') {
                          reason = 'Energy efficiency assessment';
-                     } else if (reason === '3') {
+                     } else if (reason === '3' || reason === '3.') {
                          reason = 'Maintenance or repair discussion';
                      }
                      
@@ -863,7 +877,7 @@ export const handleCRM = async (
                          responseText = `Unfortunately, I couldn't find any free slots${requestedDate ? ` on ${format(parseISO(requestedDate), 'PPPP', { locale: enUS })}` : ' for the near future'}. Would another day work for you?`;
                          nextState.step = 'awaitingDateTimePreference';
                      }
-                 } catch (error) {
+  } catch (error) {
                      console.error("Error finding available slots:", error);
                      responseText = "Something went wrong while searching for available times. Apologies for the inconvenience. Let's try again later.";
                      resetState();

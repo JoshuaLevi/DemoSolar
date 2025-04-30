@@ -281,24 +281,45 @@ const generateProposal = async (
   // Try to estimate based on assessment energy usage
   const parsedUsage = parseEnergyUsage(assessment?.energyUsage);
   if (parsedUsage.annualKWh) {
-      // Estimate size based on annual kWh (e.g., assume 1300 kWh/kWp/year)
-      annualProduction = parsedUsage.annualKWh;
-      systemSizeKW = Math.round((annualProduction / 1300) * 10) / 10; // Round to 1 decimal
+    // Estimate size based on annual kWh (e.g., assume 1300 kWh/kWp/year)
+    annualProduction = parsedUsage.annualKWh;
+    systemSizeKW = Math.round((annualProduction / 1300) * 10) / 10; // Round to 1 decimal
   } else if (parsedUsage.monthlyBill) {
-      // Estimate annual kWh based on monthly bill and avg rate
-      annualProduction = Math.round((parsedUsage.monthlyBill / AVG_ELECTRICITY_RATE) * 12);
-      systemSizeKW = Math.round((annualProduction / 1300) * 10) / 10; // Round to 1 decimal
+    // Estimate annual kWh based on monthly bill and avg rate
+    annualProduction = Math.round((parsedUsage.monthlyBill / AVG_ELECTRICITY_RATE) * 12);
+    systemSizeKW = Math.round((annualProduction / 1300) * 10) / 10; // Round to 1 decimal
   }
 
-  // Allow user message to override estimate
+  // Check which plan was selected
+  const planMatch = message.match(/Selected plan: (basic|standard|premium)/i);
+  if (planMatch && planMatch[1]) {
+    const selectedPlan = planMatch[1].toLowerCase();
+    
+    // Adjust system size based on selected plan
+    if (selectedPlan === 'basic') {
+      // Basic plan covers ~25% of usage
+      systemSizeKW = Math.round((systemSizeKW * 0.25) * 10) / 10;
+      annualProduction = Math.round(systemSizeKW * 1300);
+    } else if (selectedPlan === 'standard') {
+      // Standard plan covers ~50% of usage
+      systemSizeKW = Math.round((systemSizeKW * 0.5) * 10) / 10;
+      annualProduction = Math.round(systemSizeKW * 1300);
+    } else if (selectedPlan === 'premium') {
+      // Premium plan covers ~75% of usage
+      systemSizeKW = Math.round((systemSizeKW * 0.75) * 10) / 10;
+      annualProduction = Math.round(systemSizeKW * 1300);
+    }
+  }
+
+  // Allow user message to override estimate (for custom sizing)
   const userSpecifiedSize = extractSystemSize(message);
   if (userSpecifiedSize) {
-      systemSizeKW = userSpecifiedSize;
-      // Re-estimate production if size is specified
-      annualProduction = Math.round(systemSizeKW * 1300);
+    systemSizeKW = userSpecifiedSize;
+    // Re-estimate production if size is specified
+    annualProduction = Math.round(systemSizeKW * 1300);
   }
   
-  // Use assessment estimates if they exist (from a potentially smarter assessment agent later)
+  // Use assessment estimates if they exist
   if (assessment?.estimatedSystemSize) {
     systemSizeKW = assessment.estimatedSystemSize;
   }
@@ -392,17 +413,13 @@ export const handleProposal = async (
   conversationHistory: ConversationTurn[] = []
 ): Promise<AgentResponse> => {
 
-  // --- Remove Stub Logic / Placeholder --- 
-  
-  // --- Activate Original Logic (Modified) ---
-  
-  // Check for handoff first (Keep or remove as needed)
+  // Check for handoff first
   const handoffCheck = checkForHandoff(message);
   if (handoffCheck.needsHandoff && handoffCheck.nextAgent) {
     return {
-      text: `I understand you're interested in ${handoffCheck.reason}. Let me connect you with the right agent.`,
+      text: `I understand you're interested in ${handoffCheck.nextAgent === 'crm' ? 'scheduling an appointment' : 'getting more assessment details'}. Let me connect you with the right agent.`,
       type: 'handoff',
-      nextAgent: handoffCheck.nextAgent as any, // TODO: Use AgentType
+      nextAgent: handoffCheck.nextAgent as AgentType,
       confidence: 0.9
     };
   }
@@ -411,44 +428,66 @@ export const handleProposal = async (
   const assessment = await findConversationAssessment(conversationId);
 
   if (!assessment) {
-      // Handle case where assessment is not found for the conversation
-      return {
-          text: "I couldn't find the previous assessment details for this conversation. Could you perhaps provide the property address and energy usage again?",
-          type: 'text',
-          confidence: 0.5,
-          nextAgent: 'solarAssessment' // Go back to assessment
-      };
+    // Handle case where assessment is not found for the conversation
+    return {
+      text: "I couldn't find your assessment details. Could you please provide your property address and energy usage again?",
+      type: 'text',
+      confidence: 0.5,
+      nextAgent: 'solarAssessment' // Go back to assessment
+    };
   }
 
-  // 2. Perform calculations (generate the offer object)
-  const generatedOffer = await generateProposal(assessment, userEmail, message);
+  // 2. Identify which plan the user selected
+  let selectedPlan = 'standard'; // Default to standard plan
+  const lowerMessage = message.toLowerCase();
+  
+  if (lowerMessage.includes('basic') || lowerMessage.includes('25%') || lowerMessage.includes('small')) {
+    selectedPlan = 'basic';
+  } else if (lowerMessage.includes('standard') || lowerMessage.includes('50%') || lowerMessage.includes('medium')) {
+    selectedPlan = 'standard';
+  } else if (lowerMessage.includes('premium') || lowerMessage.includes('75%') || lowerMessage.includes('large')) {
+    selectedPlan = 'premium';
+  } else if (lowerMessage.includes('custom')) {
+    // Handle custom request with any specific details from message
+    console.log("User requested custom proposal");
+  }
+
+  // Create a modified message to include the selected plan
+  const enhancedMessage = `${message} (Selected plan: ${selectedPlan})`;
+
+  // 3. Perform calculations (generate the offer object)
+  const generatedOffer = await generateProposal(assessment, userEmail, enhancedMessage);
 
   // 4. Save proposal to proposalsContainer
   try {
-      await proposalsContainer.items.create(generatedOffer);
-      console.log(`Proposal ${generatedOffer.id} saved to Cosmos DB.`);
+    await proposalsContainer.items.create(generatedOffer);
+    console.log(`Proposal ${generatedOffer.id} saved to Cosmos DB.`);
   } catch (error) {
-      console.error("Error saving proposal to Cosmos DB:", error);
-      // Decide how to handle this - maybe proceed without saving?
-      // For now, return an error message
-      return {
-          text: "I was able to generate the proposal details, but encountered an error trying to save them. Please try again later.",
-          type: 'text',
-          confidence: 0.4
-      };
+    console.error("Error saving proposal to Cosmos DB:", error);
+    return {
+      text: "I was able to generate the proposal details, but encountered an error trying to save them. Please try again later.",
+      type: 'text',
+      confidence: 0.4
+    };
   }
   
-  // 3. Generate response text (LLM)
-  // Using existing format function for now, could enhance with LLM later
+  // 5. Generate response text with confidence scores and reasoning
   const responseText = formatProposalResponse(generatedOffer);
 
-  // 5. Return response
+  // 6. Return response
   const response: AgentResponse = {
-      text: responseText,
-      type: 'offer', // Use 'offer' type for potential UI formatting
-      confidence: 0.85, // High confidence as it's based on calculations
-      nextAgent: 'crm', // Suggest CRM for next step after proposal
-      data: generatedOffer // Include the offer data in the response
+    text: responseText,
+    type: 'offer', // Use 'offer' type for potential UI formatting
+    confidence: 0.85, // High confidence as it's based on calculations
+    nextAgent: 'crm', // Suggest CRM for next step after proposal
+    data: {
+      ...generatedOffer, // Include the offer data in the response
+      feedbackOptions: {
+        showOptions: true,
+        options: ['helpful', 'not helpful']
+      }
+    },
+    reasoning: `Generated a ${selectedPlan} plan proposal based on your energy usage of ${assessment.energyUsage} and preferences.`
   };
 
   return response;

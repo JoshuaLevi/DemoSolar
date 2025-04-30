@@ -4,7 +4,39 @@ import { handleAppointmentBooking } from './intakeAgent';
 import { CRMEntry, AgentType } from '../models/types';
 
 // Mock CRM database (in-memory for this prototype)
-let crmDatabase: CRMEntry[] = [];
+let crmDatabase: CRMEntry[] = [
+  // Add some sample entries so dashboard shows data
+  {
+    id: '1',
+    timestamp: new Date(new Date().setDate(new Date().getDate() - 1)).toISOString(),
+    query: "How much do solar panels cost?",
+    response: "The cost of solar panels depends on various factors including size, quality, and installation. Typically, for a residential installation, you can expect to pay between €5,000 and €15,000 for a complete system.",
+    agentType: "info",
+    userEmail: "sample@example.com",
+    data: {},
+    conversationId: "conv-sample1"
+  },
+  {
+    id: '2',
+    timestamp: new Date(new Date().setDate(new Date().getDate() - 2)).toISOString(),
+    query: "I want to book an appointment for a consultation",
+    response: "I'd be happy to help you schedule a consultation. What date and time works best for you?",
+    agentType: "intake",
+    userEmail: "customer@example.com",
+    data: {},
+    conversationId: "conv-sample2"
+  },
+  {
+    id: '3',
+    timestamp: new Date().toISOString(),
+    query: "Can you give me a quote for solar installation?",
+    response: "I'd be happy to provide a quote. To give you an accurate estimate, I'll need some information about your home and energy usage.",
+    agentType: "offer",
+    userEmail: "newcustomer@example.com",
+    data: {},
+    conversationId: "conv-sample3"
+  }
+];
 
 // Export the CRM database for access in the admin dashboard
 export const getCRMEntries = (): CRMEntry[] => {

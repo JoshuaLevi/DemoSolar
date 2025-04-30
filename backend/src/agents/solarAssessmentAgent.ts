@@ -341,11 +341,50 @@ export const handleSolarAssessment = async (
 
         try {
             await assessmentsContainer.items.create(assessmentRecord);
-            responseText = `Thanks! I've created an initial assessment record (ID: ${assessmentId}). A specialist may follow up if more details are needed. For now, is there anything else I can help with? Perhaps provide a proposal based on this?`;
-            // Suggest handoff to proposal agent
-            nextAgent = 'proposal';
+            
+            // Parse the energy usage to estimate system size
+            const parsedUsage = parseEnergyUsage(state.energyUsage);
+            let annualKWh = 7000; // Default if we can't parse
+            
+            if (parsedUsage.annualKWh) {
+                annualKWh = parsedUsage.annualKWh;
+            } else if (parsedUsage.monthlyBill) {
+                // Rough estimate: $1 = 3.33 kWh (at $0.30/kWh)
+                annualKWh = parsedUsage.monthlyBill * 3.33 * 12;
+            }
+            
+            // Generate three plan options based on the annual usage
+            const planOptions = generatePlanOptions(annualKWh);
+            
+            // Format the response with the plan options
+            responseText = `
+Based on your annual energy usage of approximately ${annualKWh.toLocaleString()} kWh, I've created the following solar panel options for you:
+
+### Basic Plan (25% Coverage)
+- **Number of Panels:** ${planOptions.basic.panelCount}
+- **System Size:** ${planOptions.basic.systemSize} kWp
+- **Estimated Annual Production:** ${planOptions.basic.production.toLocaleString()} kWh (${planOptions.basic.coveragePercent}% of your usage)
+- **Estimated Cost:** €${planOptions.basic.cost.toLocaleString()}
+
+### Standard Plan (50% Coverage)
+- **Number of Panels:** ${planOptions.standard.panelCount}
+- **System Size:** ${planOptions.standard.systemSize} kWp
+- **Estimated Annual Production:** ${planOptions.standard.production.toLocaleString()} kWh (${planOptions.standard.coveragePercent}% of your usage)
+- **Estimated Cost:** €${planOptions.standard.cost.toLocaleString()}
+
+### Premium Plan (75% Coverage)
+- **Number of Panels:** ${planOptions.premium.panelCount}
+- **System Size:** ${planOptions.premium.systemSize} kWp
+- **Estimated Annual Production:** ${planOptions.premium.production.toLocaleString()} kWh (${planOptions.premium.coveragePercent}% of your usage)
+- **Estimated Cost:** €${planOptions.premium.cost.toLocaleString()}
+
+Which plan would you be interested in? Or would you like a custom proposal?
+`;
+            
             // Clean up state for this conversation
             delete assessmentState[conversationId];
+            // Suggest handoff to proposal agent
+            nextAgent = 'proposal';
         } catch (error) {
             console.error("Error saving assessment to Cosmos DB:", error);
             responseText = "Sorry, I encountered an error trying to save the assessment information. Please try again later.";
@@ -364,11 +403,112 @@ export const handleSolarAssessment = async (
         type: 'text', // Could be 'assessment-update' later
         confidence: confidence,
         nextAgent: nextAgent,
-        data: { conversationId: conversationId } // Pass conversationId back
+        data: { 
+            conversationId: conversationId,
+            feedbackOptions: {
+                showOptions: true,
+                options: ['helpful', 'not helpful']
+            }
+        },
+        reasoning: 'Response based on general information about solar energy systems'
     };
 
-    // Note: We are not explicitly adding this turn to the main 'conversations' log here.
-    // The orchestrator or a dedicated logging mechanism should handle that.
-
     return response;
-}; 
+};
+
+// Helper function to parse energy usage from message
+const parseEnergyUsage = (usageString?: string): { annualKWh?: number, monthlyBill?: number } => {
+    if (!usageString) return {};
+    const lowerUsage = usageString.toLowerCase();
+
+    // Look for kWh patterns
+    const kwhYearMatch = lowerUsage.match(/(\d+(?:[,.]\d+)*)\s*kwh\s*(?:\/|per|a)?\s*year/);
+    if (kwhYearMatch && kwhYearMatch[1]) {
+        return { annualKWh: parseInt(kwhYearMatch[1].replace(/[,.]/g, '')) };
+    }
+    const kwhMonthMatch = lowerUsage.match(/(\d+(?:[,.]\d+)*)\s*kwh\s*(?:\/|per|a)?\s*month/);
+    if (kwhMonthMatch && kwhMonthMatch[1]) {
+        return { annualKWh: parseInt(kwhMonthMatch[1].replace(/[,.]/g, '')) * 12 };
+    }
+
+    // Look for currency patterns (assuming monthly bill)
+    const billMatch = lowerUsage.match(/(?:\$|usd|eur|euro|bill.*?)\s*(\d+(?:[,.]\d+)*)/);
+    if (billMatch && billMatch[1]) {
+        return { monthlyBill: parseInt(billMatch[1].replace(/[,.]/g, '')) };
+    }
+
+    // Fallback: try to extract any number as kWh
+    const genericKwhMatch = lowerUsage.match(/(\d+(?:[,.]\d+)*)\s*kwh/);
+    if (genericKwhMatch && genericKwhMatch[1]) {
+         return { annualKWh: parseInt(genericKwhMatch[1].replace(/[,.]/g, '')) };
+    }
+
+    // Fallback: try to extract any number as annual kWh if it's large enough
+    const genericNumMatch = lowerUsage.match(/(\d+(?:[,.]\d+)*)/);
+    if (genericNumMatch && genericNumMatch[1]) {
+        const num = parseInt(genericNumMatch[1].replace(/[,.]/g, ''));
+        if (num > 1000) { // Likely annual kWh if >1000
+            return { annualKWh: num };
+        } else {
+            return { monthlyBill: num }; // Likely monthly bill if <1000
+        }
+    }
+
+    return {};
+};
+
+// Function to generate different plan options based on annual energy usage
+const generatePlanOptions = (annualKWh: number) => {
+    // Constants for calculations
+    const COST_PER_WATT = 1.5; // €1.50 per watt installed
+    const PANEL_WATTAGE = 400; // 400W per panel
+    const KWH_PER_KWP = 1300; // Estimated annual production per kWp in the Netherlands
+
+    // Basic Plan: 25% coverage
+    const basicCoverage = 0.25;
+    const basicSystemSize = Math.ceil((annualKWh * basicCoverage) / KWH_PER_KWP * 10) / 10; // Round to 1 decimal
+    const basicPanelCount = Math.ceil(basicSystemSize * 1000 / PANEL_WATTAGE);
+    const basicProduction = Math.round(basicSystemSize * KWH_PER_KWP);
+    const basicCost = Math.round(basicSystemSize * 1000 * COST_PER_WATT);
+    const basicCoveragePercent = Math.round(basicProduction / annualKWh * 100);
+
+    // Standard Plan: 50% coverage
+    const standardCoverage = 0.5;
+    const standardSystemSize = Math.ceil((annualKWh * standardCoverage) / KWH_PER_KWP * 10) / 10;
+    const standardPanelCount = Math.ceil(standardSystemSize * 1000 / PANEL_WATTAGE);
+    const standardProduction = Math.round(standardSystemSize * KWH_PER_KWP);
+    const standardCost = Math.round(standardSystemSize * 1000 * COST_PER_WATT);
+    const standardCoveragePercent = Math.round(standardProduction / annualKWh * 100);
+
+    // Premium Plan: 75% coverage
+    const premiumCoverage = 0.75;
+    const premiumSystemSize = Math.ceil((annualKWh * premiumCoverage) / KWH_PER_KWP * 10) / 10;
+    const premiumPanelCount = Math.ceil(premiumSystemSize * 1000 / PANEL_WATTAGE);
+    const premiumProduction = Math.round(premiumSystemSize * KWH_PER_KWP);
+    const premiumCost = Math.round(premiumSystemSize * 1000 * COST_PER_WATT);
+    const premiumCoveragePercent = Math.round(premiumProduction / annualKWh * 100);
+
+    return {
+        basic: {
+            systemSize: basicSystemSize,
+            panelCount: basicPanelCount,
+            production: basicProduction,
+            cost: basicCost,
+            coveragePercent: basicCoveragePercent
+        },
+        standard: {
+            systemSize: standardSystemSize,
+            panelCount: standardPanelCount,
+            production: standardProduction,
+            cost: standardCost,
+            coveragePercent: standardCoveragePercent
+        },
+        premium: {
+            systemSize: premiumSystemSize,
+            panelCount: premiumPanelCount,
+            production: premiumProduction,
+            cost: premiumCost,
+            coveragePercent: premiumCoveragePercent
+        }
+    };
+};

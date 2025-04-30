@@ -7,7 +7,7 @@ import { assessmentsContainer, appointmentsContainer } from '../utils/cosmosClie
 const router = express.Router();
 
 // Get all CRM entries
-router.get('/entries', (req, res) => {
+router.get('/entries', async (req, res) => {
   try {
     const entries = getCRMEntries();
     return res.status(200).json(entries);
@@ -17,11 +17,11 @@ router.get('/entries', (req, res) => {
   }
 });
 
-// Get all offers
-router.get('/offers', (req, res) => {
+// Get all offers - FIXED to use async/await properly
+router.get('/offers', async (req, res) => {
   try {
-    const offers = getAllOffers();
-    console.warn("/api/crm/offers endpoint is potentially using in-memory data.");
+    // Properly await the async function result
+    const offers = await getAllOffers();
     return res.status(200).json(offers);
   } catch (error) {
     console.error('Error fetching offers:', error);

@@ -10,6 +10,10 @@ import { performKeywordSearch } from '../services/searchService';
 // Import Cosmos container for logging
 import { container as cosmosContainer } from '../utils/cosmosClient';
 import { v4 as uuidv4 } from 'uuid'; // Import uuid for generating unique IDs
+import fetch from 'node-fetch'; // Import node-fetch
+
+// Remove the placeholder declaration
+// declare function web_search(args: { search_term: string, explanation: string }): Promise<any>;
 
 dotenv.config();
 
@@ -38,74 +42,133 @@ console.log(`Initialized AzureOpenAI client for deployment '${deployment}' and a
 // --- Remove the hardcoded solarFAQ array --- 
 // const solarFAQ = [...]; 
 
-// --- Reworked findRelevantFAQs to use Azure AI Search --- 
+// --- Reworked findRelevantFAQs to use Azure AI Search ---
 /**
- * Finds relevant information from the Azure AI Search index based on the user query.
- * @param query The user's query.
+ * Finds relevant information from the Azure AI Search index based on the user query,
+ * falling back to web search and then generative response if needed.
+ * @param query The user\'s query.
  * @returns An object containing the answer, confidence, and sources.
  */
 const findRelevantInformation = async (query: string): Promise<{ answer: string, confidence: number, sources: string[] }> => {
-  // Define a minimum relevance score threshold
-  // Increased threshold based on observed scores
-  const SCORE_THRESHOLD = 1.5; // Adjust this value based on testing
+  const SCORE_THRESHOLD = 3.0;
+  const BRAVE_API_KEY = process.env.BRAVE_API_KEY;
+  let webContextText: string | null = null;
+  let webContextSourceTitle: string | null = null;
+  let webContextSourceUrl: string | null = null;
 
+  // 1. Try Azure AI Search (RAG)
   try {
-    // Request top 1 result, including the score
+    console.log(`Attempting RAG search for query: "${query}"`);
     const searchResults: KnowledgeDocument[] = await performKeywordSearch(query, { top: 1 });
 
-    // Check if there is a result AND if its score meets the threshold
     if (searchResults && searchResults.length > 0 && searchResults[0]['@search.score'] && searchResults[0]['@search.score'] >= SCORE_THRESHOLD) {
       const topResult: KnowledgeDocument = searchResults[0];
       console.log(`RAG Match Found: ID=${topResult.id}, Title=${topResult.title}, Score=${topResult['@search.score']}`);
+      // Return RAG result directly if score is high enough
       return {
-        answer: topResult.content || "I found some information, but it seems incomplete.",
-        // You could potentially adjust confidence based on score
-        confidence: 0.85, // Keep high confidence for good RAG hits
+        answer: topResult.content || "I found relevant information in our knowledge base, but it seems incomplete.",
+        confidence: 0.85,
         sources: [`Knowledge Base: ${topResult.title}`]
       };
     } else {
-      // Log why the fallback is triggered
-      if (searchResults && searchResults.length > 0) {
-         console.log(`No RAG match found (Top score ${searchResults[0]['@search.score']} below threshold ${SCORE_THRESHOLD}), falling back to generateResponse.`);
+       if (searchResults && searchResults.length > 0) {
+         console.log(`RAG result found but score (${searchResults[0]['@search.score']}) is below threshold ${SCORE_THRESHOLD}. Proceeding to web search.`);
       } else {
-         console.log("No RAG documents found, falling back to generateResponse.");
+         console.log("No relevant documents found via RAG. Proceeding to web search.");
       }
-      // Call the disabled generateResponse function
-      return generateResponse(query);
     }
   } catch (error) {
-    console.error('Error during Azure AI Search or processing:', error);
-    console.log("Error during RAG, falling back to generateResponse (currently disabled).");
-     // Call the disabled generateResponse function
-    return generateResponse(query, "I encountered an issue searching my knowledge base.");
+    console.error('Error during Azure AI Search (RAG):', error);
+    // Proceed to web search even if RAG fails
+  }
+
+  // 2. Attempt Web Search if RAG wasn't sufficient
+  if (BRAVE_API_KEY) {
+    console.log("Attempting web search via Brave API.");
+    try {
+        const encodedQuery = encodeURIComponent(query);
+        const apiUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodedQuery}&count=3`;
+        console.log(`Calling Brave Search API: ${apiUrl}`);
+        const response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'X-Subscription-Token': BRAVE_API_KEY }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Brave API error: ${response.status} ${response.statusText} - ${await response.text()}`);
+        }
+        const data = await response.json();
+
+        if (data?.web?.results && data.web.results.length > 0) {
+            const topWebResult = data.web.results[0];
+            webContextText = topWebResult.description || null;
+            webContextSourceUrl = topWebResult.url || null;
+            webContextSourceTitle = topWebResult.title || 'Web Result';
+            console.log(`Web search successful. Found context: ${webContextSourceTitle}`);
+        } else {
+            console.log("Web search did not return usable results.", data);
+      }
+    } catch (error) {
+        console.error('Error during Brave Search API call:', error);
+        // Continue to generative fallback even if web search fails
+    }
+  } else {
+    console.warn("BRAVE_API_KEY not set. Skipping web search.");
+  }
+
+  // 3. Always Fallback to Generative Response (potentially using web context)
+  console.log("Proceeding to generative response using Azure OpenAI" + (webContextText ? " with web context." : "."));
+  try {
+      const genResult = await generateResponse(query, webContextText, webContextSourceTitle);
+      // Add web source URL if web context was used in generation
+      const finalSources = webContextSourceUrl ? [...genResult.sources, webContextSourceUrl] : genResult.sources;
+      return { ...genResult, sources: finalSources };
+    
+  } catch (error) {
+      console.error('Error during generative fallback:', error);
+    return { 
+          answer: "I'm sorry, I encountered multiple issues trying to find an answer. Could you please rephrase or try again later?",
+          confidence: 0.1,
+      sources: []
+    };
   }
 };
 
 // Re-enable the body of generateResponse
-const generateResponse = async (query: string, context?: string): Promise<{ answer: string, confidence: number, sources: string[] }> => {
-   try {
-    // Explicitly define the type for the messages array
+const generateResponse = async (
+    query: string, 
+    webContextText?: string | null, 
+    webContextSourceTitle?: string | null
+): Promise<{ answer: string, confidence: number, sources: string[] }> => {
+  try {
+    let contextMessage = "Answer the user's query based on your general knowledge.";
+    if (webContextText) {
+        contextMessage = `Answer the user's query in English using your general knowledge, prioritizing the following context found from a web search${webContextSourceTitle ? ` (Source: ${webContextSourceTitle})` : ''}: "${webContextText}". Synthesize this information into a comprehensive answer. If the web context seems irrelevant, rely on your general knowledge but mention the search was attempted.`;
+    }
+    
     const messages: ChatCompletionMessageParam[] = [
-      { role: 'system', content: customerSupportAgentPrompt },
-      // Add context if provided (e.g., about search failure)
-      ...(context ? [{ role: 'system' as const, content: `Context: ${context}` }] : []),
-      { role: 'user', content: query }
+        { role: 'system', content: customerSupportAgentPrompt },
+      { role: 'system', content: contextMessage }, // Add the dynamic context message
+        { role: 'user', content: query }
     ];
+    
     if (!client) throw new Error("OpenAI client is not initialized.");
 
-    // Use the deployment name in the create call
     const response = await client.chat.completions.create({
-        model: deployment, // Specify the deployment name here
-        messages: messages, // Pass the correctly typed array
+        model: deployment, 
+        messages: messages, 
         temperature: 0.7,
         max_tokens: 500
     });
 
     const content = response.choices[0]?.message?.content || 'I apologize, I couldn\'t generate a helpful response.';
+    // Base sources array - might include web source URL later in findRelevantInformation
+    const baseSources = ['Generated response' + (webContextText ? ' synthesized with web context' : ' based on general knowledge')];
+    
     return {
       answer: content,
-      confidence: 0.6,
-      sources: ['Generated response based on general knowledge']
+      confidence: webContextText ? 0.75 : 0.6, // Slightly higher confidence if web context was used
+      sources: baseSources 
     };
   } catch (error) {
     console.error('Error generating response with Azure OpenAI:', error);
@@ -175,31 +238,43 @@ const applyMetacognition = (
     response: AgentResponse, // Accept AgentResponse
     query: string
 ): AgentResponse => { // Return AgentResponse
-    // If confidence is low, acknowledge uncertainty
+  // If confidence is low, acknowledge uncertainty
     if (response.confidence && response.confidence < 0.4 && !response.sources?.includes('OpenAI Fallback Disabled')) {
         // Create a new AgentResponse object for the modified response
         const improvedResponse: AgentResponse = {
             ...response, // Copy existing fields
             text: `I'm not entirely certain about this, but based on my general knowledge: ${response.text} Would you like me to connect you with a solar specialist who can provide more detailed information?`
-        };
-        return improvedResponse;
-    }
-
+    };
+    return improvedResponse;
+  }
+  
     // If we have specific sources (from RAG), cite them
-    if (response.sources && response.sources.length > 0 && response.sources[0].startsWith('Knowledge Base:')) {
-        // Avoid double citing if already present
-        if (!response.text.toLowerCase().includes('based on my knowledge base') && !response.text.toLowerCase().includes(response.sources[0].toLowerCase())) {
-            // Create a new AgentResponse object for the modified response
-            const improvedResponse: AgentResponse = {
-                ...response, // Copy existing fields
-                text: `${response.text}\n\n(Source: ${response.sources[0]})`
-            };
-            return improvedResponse;
-        }
+    // Also cite web search URL if present (added in findRelevantInformation)
+    let sourceCitation = "";
+  if (response.sources && response.sources.length > 0) {
+       const knowledgeBaseSource = response.sources.find(s => s.startsWith('Knowledge Base:'));
+       const webSourceUrl = response.sources.find(s => s.startsWith('http')); // Find the URL
+       
+       if (knowledgeBaseSource) {
+         sourceCitation = `\n\n(Source: ${knowledgeBaseSource})`;
+       } else if (webSourceUrl) {
+         // Try to extract title from reasoning if possible, otherwise just use URL
+         const titleMatch = response.reasoning?.match(/using information from: (.*?)( - https?:|$)/);
+         const sourceDisplay = titleMatch && titleMatch[1] ? `${titleMatch[1].trim()} - ${webSourceUrl}` : webSourceUrl;
+         sourceCitation = `\n\n(Source: ${sourceDisplay})`;
+       } 
     }
 
-    // If no changes needed, return the original response object
-    return response;
+    if (sourceCitation && !response.text.toLowerCase().includes("(source:")) { // Avoid double citing
+        const improvedResponse: AgentResponse = {
+            ...response,
+            text: response.text + sourceCitation
+      };
+      return improvedResponse;
+  }
+  
+  // If no changes needed, return the original response object
+  return response;
 };
 
 // --- Logging Function --- 
@@ -222,6 +297,7 @@ async function logConversationStep(
     type: agentResponse.type,
     confidence: agentResponse.confidence,
     sources: agentResponse.sources,
+    reasoning: agentResponse.reasoning, // Log reasoning
     // Add other relevant fields if needed, like userEmail if available
   };
 
@@ -236,48 +312,80 @@ async function logConversationStep(
 
 // Main handler function - updated to include logging
 export const handleCustomerSupport = async (
-  message: string,
+  query: string, 
   userEmail?: string,
-  conversationHistory?: ConversationTurn[]
+  // conversationHistory is passed by orchestrator, but not directly used here anymore
+  // It might be useful for future context enrichment, but RAG/generateResponse handles current context
+  conversationHistory?: ConversationTurn[], 
+  conversationId?: string // Added conversationId for logging
 ): Promise<AgentResponse> => {
-  // --- Determine Conversation ID --- 
-  // Try to get from history, otherwise start a new one
-  // In a real app, the frontend/orchestrator might manage this more robustly
-  const conversationId = conversationHistory?.[0]?.conversationId || uuidv4();
-  console.log(`Handling support request for conversation ID: ${conversationId}`);
-
-  // 1. Check for handoff first
-  const handoffCheck = checkForHandoff(message);
+  try {
+    console.log(`Handling customer support query: "${query}" for conversation: ${conversationId}`);
+    
+    // 1. Check for Handoff first
+    const handoffCheck = checkForHandoff(query);
   if (handoffCheck.needsHandoff && handoffCheck.nextAgent) {
-    const handoffResponse: AgentResponse = {
-        text: `I'd be happy to help with that. Let me connect you with our ${handoffCheck.nextAgent === 'solarAssessment' ? 'Solar Assessment' : handoffCheck.nextAgent === 'proposal' ? 'Proposal' : 'Customer Service'} team who can better assist with your ${handoffCheck.nextAgent === 'solarAssessment' ? 'property assessment' : handoffCheck.nextAgent === 'proposal' ? 'pricing questions' : 'scheduling needs'}.`,
-        type: 'handoff',
-        nextAgent: handoffCheck.nextAgent as any,
-        confidence: 0.9
+      const handoffResponse: AgentResponse = {
+        text: `Let me connect you with our ${handoffCheck.nextAgent === 'solarAssessment' ? 'Solar Assessment' : handoffCheck.nextAgent === 'proposal' ? 'Proposal' : 'Scheduling'} team to help with that.`, // Corrected handoff text
+      type: 'handoff',
+        nextAgent: handoffCheck.nextAgent as AgentType, // Assert type
+        confidence: 0.95, // High confidence in handoff decision
+        reasoning: handoffCheck.reason || `User query matches criteria for ${handoffCheck.nextAgent} agent.`,
+        data: {} // No specific data needed for handoff text
       };
-    // Log the handoff decision *before* returning
-    await logConversationStep(conversationId, message, handoffResponse, 'customerSupport');
-    return handoffResponse;
-  }
+      
+      // Log the handoff decision
+      if (conversationId) {
+        await logConversationStep(conversationId, query, handoffResponse);
+      } else {
+        console.warn("Cannot log handoff step: conversationId is missing.");
+      }
+      
+      return handoffResponse;
+    }
 
-  // 2. If no handoff, find relevant information using RAG (or fallback generator)
-  const infoResult = await findRelevantInformation(message);
+    // 2. Find relevant information using RAG or generate response with web context
+    const { answer, confidence, sources } = await findRelevantInformation(query);
+  
+    // 3. Construct initial response object
+    let baseResponse: AgentResponse = {
+      text: answer, // This is now the potentially synthesized answer
+      type: 'text', 
+      confidence: confidence,
+      sources: sources, // Includes web URL if applicable
+      reasoning: `Generated response with confidence ${confidence.toFixed(2)}${sources.length > 0 && sources.some(s => s.startsWith('http')) ? ' using information from web search' : sources.length > 0 && sources[0].startsWith('Knowledge Base:') ? ' using information from Knowledge Base' : '.'}`, // Updated reasoning
+      data: {} // Initialize empty data object
+    };
 
-  // 3. Construct the AgentResponse object *after* getting info
-  let agentResponse: AgentResponse = {
-    text: infoResult.answer,
+    // 4. Apply Metacognition (which now handles adding source citation)
+    let finalResponse = applyMetacognition(baseResponse, query);
+
+    // 5. Log the final response
+    if (conversationId) {
+      await logConversationStep(conversationId, query, finalResponse);
+    } else {
+       console.warn("Cannot log customer support step: conversationId is missing.");
+    }
+    
+    return finalResponse;
+
+  } catch (error) {
+    console.error('Error in customer support agent:', error);
+    
+    // Construct a standard error response
+    const errorResponse: AgentResponse = {
+      text: "I apologize, but I encountered an error processing your question. Could you please try asking in a different way?",
     type: 'text',
-    confidence: infoResult.confidence,
-    sources: infoResult.sources,
-  };
+      confidence: 0.3,
+      reasoning: "Internal error occurred while processing the query.",
+      data: {}
+    };
+    
+    // Log the error interaction if possible
+    if (conversationId) {
+      await logConversationStep(conversationId, query, errorResponse, 'customerSupport');
+    }
 
-  // 4. Apply metacognition (e.g., add source citation or uncertainty)
-  agentResponse = applyMetacognition(agentResponse, message);
-
-  // 5. Log the interaction to Cosmos DB *before* returning response
-  // Use await to ensure logging completes before sending response (optional)
-  await logConversationStep(conversationId, message, agentResponse, 'customerSupport');
-
-  // 6. Return the final response
-  return agentResponse;
+    return errorResponse;  
+  }
 }; 

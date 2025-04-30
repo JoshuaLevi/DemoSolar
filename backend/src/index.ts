@@ -11,6 +11,8 @@ import crmRoutes from './routes/crmRoutes';
 import { ensureIndexExists, addDocumentsToIndex } from './services/searchService'; // Import search functions
 import { container as cosmosContainer } from './utils/cosmosClient'; // Import cosmos client for logging later
 import { searchClient } from './utils/searchClient'; // Import search client for RAG later
+// import adminRoutes from './routes/adminRoutes'; // Comment out admin routes for now
+import feedbackRoutes from './routes/feedbackRoutes'; // Import feedback routes
 
 // Sample data for the knowledge base
 const sampleKnowledgeBase = [
@@ -79,6 +81,8 @@ async function initializeApp() {
   // Routes
   app.use('/api', askRoutes);
   app.use('/api/crm', crmRoutes);
+  // app.use('/api/admin', adminRoutes); // Comment out admin routes usage for now
+  app.use('/api/feedback', feedbackRoutes); // Use feedback routes
 
   // Health check endpoint
   app.get('/health', (req, res) => {

@@ -1,101 +1,171 @@
 .crm-page {
-  padding: 1rem;
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  color: #333;
 }
 
 .crm-header {
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
+  position: relative;
 }
 
 .crm-header h2 {
   color: #1a5276;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 2.2rem;
+  font-weight: 700;
+  position: relative;
+  display: inline-block;
+}
+
+.crm-header h2::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 0;
+  width: 60px;
+  height: 3px;
+  background-color: #1a5276;
 }
 
 .crm-header p {
   color: #666;
+  font-size: 1.1rem;
+  margin-top: 1rem;
 }
 
 .crm-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2.5rem;
 }
 
 .stat-card {
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  padding: 1.5rem;
+  background: linear-gradient(145deg, #ffffff, #f8f9fa);
+  border-radius: 12px;
+  padding: 1.75rem;
   text-align: center;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid rgba(0, 0, 0, 0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 5px;
+  background: linear-gradient(90deg, #1a5276, #3498db);
+  opacity: 0.7;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.09);
 }
 
 .stat-card h3 {
-  font-size: 2rem;
+  font-size: 2.5rem;
   color: #1a5276;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: 700;
 }
 
 .stat-card p {
   color: #666;
   margin: 0;
+  font-size: 1.1rem;
+  font-weight: 500;
 }
 
 .tabs {
   display: flex;
-  border-bottom: 1px solid #ddd;
-  margin-bottom: 1.5rem;
+  border-bottom: 2px solid #eaeaea;
+  margin-bottom: 2rem;
+  gap: 0.5rem;
 }
 
-.tab-button {
-  padding: 0.75rem 1.5rem;
+button {
+  padding: 1rem 1.5rem;
   background: none;
   border: none;
   cursor: pointer;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
   color: #666;
   border-bottom: 3px solid transparent;
   transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
 }
 
-.tab-button:hover {
+button:hover {
   color: #1a5276;
 }
 
-.tab-button.active {
+button.active {
   color: #1a5276;
   border-bottom-color: #1a5276;
 }
 
 .tab-content {
   background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
+  padding: 2rem;
   min-height: 400px;
 }
 
+/* Error display styling */
+.error-banner {
+  background-color: #fff5f5;
+  color: #e53e3e;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border-left: 4px solid #e53e3e;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+/* Table styling */
 table {
   width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 1.5rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 th, td {
-  padding: 0.75rem;
+  padding: 1rem;
   text-align: left;
   border-bottom: 1px solid #eee;
 }
 
 th {
-  background-color: #f8f9fa;
+  background-color: #f8fafc;
   font-weight: 600;
-  color: #444;
+  color: #1a5276;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+tr:last-child td {
+  border-bottom: none;
 }
 
 tr:hover {
-  background-color: #f8f9fa;
+  background-color: #f8fafc;
 }
 
 .query-cell, .response-cell {
@@ -105,41 +175,132 @@ tr:hover {
   text-overflow: ellipsis;
 }
 
+/* Loading and error states */
 .loading {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 200px;
   color: #666;
+  flex-direction: column;
+}
+
+.loading::after {
+  content: "";
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #1a5276;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-top: 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .error {
-  background-color: #ffebee;
-  color: #c62828;
-  padding: 1rem;
-  border-radius: 4px;
+  background-color: #fff5f5;
+  color: #e53e3e;
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
   margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  border-left: 4px solid #e53e3e;
+}
+
+.error::before {
+  content: "⚠️";
+  margin-right: 0.75rem;
+  font-size: 1.25rem;
+}
+
+/* Calendar view styling */
+.calendar-view {
+  margin-top: 1rem;
+}
+
+.calendar-view h3 {
+  color: #1a5276;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.calendar-instructions {
+  color: #666;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+  font-size: 0.95rem;
+  padding: 1rem;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  border-left: 3px solid #3498db;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+  .crm-page {
+    padding: 1.5rem;
+  }
+  
+  .stat-card h3 {
+    font-size: 2rem;
+  }
 }
 
 @media (max-width: 768px) {
   .tabs {
     flex-direction: column;
     border-bottom: none;
+    margin-bottom: 1.5rem;
   }
   
-  .tab-button {
+  button {
     text-align: left;
     border-left: 3px solid transparent;
     border-bottom: 1px solid #eee;
+    padding: 0.85rem 1rem;
   }
   
-  .tab-button.active {
+  button.active {
     border-left-color: #1a5276;
     border-bottom-color: #eee;
+    background-color: #f8fafc;
+  }
+  
+  .tab-content {
+    padding: 1.25rem;
+    border-radius: 8px;
   }
   
   table {
     display: block;
     overflow-x: auto;
+  }
+  
+  th, td {
+    padding: 0.85rem;
+  }
+  
+  .crm-stats {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .crm-page {
+    padding: 1rem;
+  }
+  
+  .crm-header h2 {
+    font-size: 1.8rem;
+  }
+  
+  .crm-header p {
+    font-size: 1rem;
   }
 } 

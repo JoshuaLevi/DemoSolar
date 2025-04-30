@@ -69,9 +69,11 @@ The project leverages concepts from the "AI Agents for Beginners" course and pla
 **Completed:**
 - Initial Azure Login (`az login --use-device-code`).
 - Connection to Azure OpenAI with GPT-4o-mini.
+- Implemented the specialized agent framework (orchestrator, communication protocol).
+- Developed the CRM Agent with complete appointment booking workflow.
 
 **In Progress/To Do (High Priority - Architecture & Agents):**
-- Implement the specialized agent framework (orchestrator, communication protocol).
+- Create specialized system prompts for each agent role using the system message framework.
 - Develop the System Message Framework (templates, generation, personas).
 - Build out functionalities for each specialized agent (Customer Support, Solar Assessment, Proposal, CRM) incorporating the AI concepts mentioned above.
 
@@ -109,40 +111,67 @@ You are assisting in the development of the DemoSolar AI Agent System. The core 
 - [x] **Minimal Agents & Flow:**
   - [x] `handleSolarAssessment` (stateful, writes to `assessments` container)
   - [x] `handleProposal` (Basic generation, writes to `proposals` container)
-  - [x] `handleCRM` (Stub, `updateUserProfile` commented out)
-  - [x] End-to-end flow tested (Support -> Assess -> Proposal -> CRM Stubs)
+  - [x] `handleCRM` (Complete appointment booking with confirmation)
+  - [x] End-to-end flow tested (Support -> Assess -> Proposal -> CRM)
 - [x] **Frontend Integration:** (`Chatbot.js` handles `conversationId`, basic proposal styling)
 - [x] **CRM Dashboard:** (Shows assessments from DB)
 
-**Revised Plan Day 2 Rest/Day 3 (Focus: Core Functionality & Stability):**
+## 7. Last-Minute Improvements for Hackathon Submission (8-hour plan)
 
-**Priority 1: Fix CRM & Implement Booking (Current Focus)**
-- [ ] **Fix CRM Agent Type Error:**
-    - [ ] Analyze `updateUserProfile` call in `crmAgent.ts` and `User` / `ConversationTurn` types in `types.ts`.
-    - [ ] Identify why `conversationHistory` causes a type mismatch (likely missing `conversationId` on turns created *within* `crmAgent`).
-    - [ ] Correct the creation/handling of `ConversationTurn` objects within `crmAgent` before passing to `updateUserProfile`.
-    - [ ] Re-enable the `updateUserProfile` call.
-- [ ] **Implement Basic Appointment Booking:**
-    - [ ] Activate intent detection for scheduling in `handleCRM`.
-    - [ ] Ensure `findAvailableSlots` and `createAppointment` functions work correctly.
-    - [ ] Create `appointments` container in Cosmos DB (**Action Needed by User**).
-    - [ ] Modify `createAppointment` to save to the new Cosmos DB container (replace in-memory array).
-    - [ ] Update `/api/crm/appointments` endpoint in `crmRoutes.ts` to read from Cosmos DB.
-    - [ ] Verify `CRMPage.js` Calendar/Appointments tab displays data correctly from API.
+The following improvements are recommended to maximize our chances of winning in the targeted categories:
 
-**Priority 2: Core Value & Demo Readiness**
-- [ ] **Centralize Offer Data:** Update `/api/crm/offers` endpoint to read from the `proposals` container.
-- [ ] **Demo & Documentation (Crucial):**
-  - [ ] Prepare Demo Script.
-  - [ ] Record Demo Video.
-  - [ ] Create/update README.md & Architecture Diagram.
+### 1. Responsible AI Implementation (2 hours)
+- [ ] **Add confidence scores** to all agent responses
+- [ ] **Implement transparency features** that explain how/why the agent made certain decisions
+- [ ] **Add source citations** for knowledge-based responses
+- [ ] **Create a simple feedback mechanism** for users to rate agent responses
 
-**Priority 3: Stability & Polish**
-- [ ] **Fix OpenAI Fallback in Support Agent:** Debug `@azure/openai` import issue, re-enable direct fallback.
-- [ ] **Implement Basic Feedback Logging:** Add UI buttons, backend endpoint, log to DB.
-- [ ] **Link Data in CRM:** Make `conversationId`/`userEmail` clickable.
-- [ ] **Improve Assessment Agent:** Parse initial message.
-- [ ] Add **Vector Search** to RAG.
-- [ ] UI improvements.
+### 2. Improved RAG Implementation (2 hours)
+- [ ] **Connect knowledge base with Azure Cognitive Search** for better responses
+- [ ] **Implement semantic search** over keyword search for the Customer Support agent
+- [ ] **Add query enhancement and refinement** for more accurate information retrieval
 
-**Key Goal for Day 2/3:** Deliver a compelling demo showcasing a multi-agent system that provides tangible value (assessment, proposal, *booking*), visible to both the user and the employee (via CRM dashboard), supported by solid documentation. Stabilize core functionality (CRM user updates).
+### 3. Azure AI Agent Service Integration (2 hours)
+- [ ] **Implement basic integration** with Azure's Agent Service
+- [ ] **Document the integration process** in the README.md
+- [ ] **Highlight Azure-specific features** in the architecture diagram
+
+### 4. Demo Video Script and Preparation (1 hour)
+- [ ] **Create a detailed script** that clearly explains:
+  - The business problem being solved
+  - The multi-agent architecture
+  - Azure service integration
+  - Key AI agent concepts implemented (from the course)
+  - Business impact and metrics
+
+### 5. Code Documentation and Cleanup (1 hour)
+- [ ] **Review and clean up the codebase**
+- [ ] **Add meaningful comments** to explain key algorithms and design decisions
+- [ ] **Update the README with clear installation instructions**
+- [ ] **Document AI agent concepts** used in the implementation
+
+This plan focuses on quickly implementable improvements that align directly with the judging criteria, particularly the "Solution Quality," "Usability," and "Alignment with hackathon category" aspects. By implementing these changes, we should significantly improve our chance of success in the "Best Agent in JavaScript/TypeScript" category and potentially in the "Best Azure AI Agent Service Usage" category as well.
+
+## 8. Judging Criteria Alignment Analysis
+
+### Innovation ⭐⭐⭐⭐
+- **Multi-agent architecture** is well implemented
+- **Interactive confirmation dialog** with editing capabilities is innovative
+- **Multilingual support** (NL/EN) is a differentiating factor
+
+### Impact ⭐⭐⭐
+- **Clear business case**: Automating appointment bookings for solar panel companies
+- **Measurable results**: CRM integration enables conversion tracking
+
+### Usability ⭐⭐⭐⭐
+- **Human-in-the-loop**: Editable confirmation dialogs
+- **Real-world application**: Practical and immediately useful
+- **Step-by-step guidance**: Intuitive conversational flow
+
+### Solution Quality ⭐⭐⭐
+- **Substantial technical implementation**: Especially the CRM agent is well developed
+- **State management**: Well-designed state machine for conversations
+
+### Alignment with category (JavaScript/TypeScript) ⭐⭐⭐⭐⭐
+- **Fully in TypeScript**: Backend and modern React frontend
+- **AI-centric**: LLMs are central to the functionality

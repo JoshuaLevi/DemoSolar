@@ -11,27 +11,67 @@ function CRMPage() {
   const [assessments, setAssessments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Add specific error states for each data type
+  const [dataErrors, setDataErrors] = useState({
+    offers: '',
+    appointments: '',
+    entries: '',
+    assessments: ''
+  });
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
+      
+      // Helper function to safely fetch data with proper error handling
+      const safelyFetchData = async (url, label) => {
+        try {
+          console.log(`Fetching ${label} data from ${url}...`);
+          const response = await axios.get(url);
+          console.log(`${label} data received:`, response.data);
+          
+          // Ensure we handle empty results correctly
+          if (!response.data) {
+            console.warn(`No ${label} data received (null/undefined)`);
+            return [];
+          }
+          
+          // Ensure we always return an array
+          if (!Array.isArray(response.data)) {
+            console.warn(`${label} data is not an array, received:`, typeof response.data);
+            return [];
+          }
+          
+          return response.data;
+        } catch (err) {
+          console.error(`Error fetching ${label} data:`, err);
+          // Update specific error
+          setDataErrors(prev => ({
+            ...prev,
+            [label.toLowerCase()]: `Failed to load ${label} data: ${err.message}`
+          }));
+          return [];
+        }
+      };
+      
       try {
-        // Fetch all data in parallel
-        const [offersRes, appointmentsRes, entriesRes, assessmentsRes] = await Promise.all([
-          axios.get('/api/crm/offers'),
-          axios.get('/api/crm/appointments'),
-          axios.get('/api/crm/entries'),
-          axios.get('/api/crm/assessments')
-        ]);
+        // Fetch each data type independently to prevent one failure from affecting others
+        const offersData = await safelyFetchData('/api/crm/offers', 'Offers');
+        const appointmentsData = await safelyFetchData('/api/crm/appointments', 'Appointments');
+        const entriesData = await safelyFetchData('/api/crm/entries', 'Entries');
+        const assessmentsData = await safelyFetchData('/api/crm/assessments', 'Assessments');
         
-        setOffers(offersRes.data);
-        setAppointments(appointmentsRes.data);
-        setEntries(entriesRes.data);
-        setAssessments(assessmentsRes.data);
+        // Set data (guaranteed to be arrays from safelyFetchData)
+        setOffers(offersData);
+        setAppointments(appointmentsData);
+        setEntries(entriesData);
+        setAssessments(assessmentsData);
+        
+        // Clear general error if all went well
         setError('');
       } catch (err) {
-        console.error('Error fetching CRM data:', err);
-        setError('Failed to load CRM data. Please try again later.');
+        console.error('Error in overall data fetch process:', err);
+        setError('Failed to load dashboard data. Please try refreshing the page.');
       } finally {
         setLoading(false);
       }
@@ -83,10 +123,13 @@ function CRMPage() {
         );
       
       case 'offers':
+        // Explicitly check if offers is an array before mapping
+        const hasOffers = Array.isArray(offers) && offers.length > 0;
         return (
           <div className="offers-table">
-            <h3>Recent Quote Requests ({offers.length})</h3>
-            {offers.length === 0 ? (
+            <h3>Recent Quote Requests ({hasOffers ? offers.length : 0})</h3>
+            {dataErrors.offers && <div className="error-banner">{dataErrors.offers}</div>}
+            {!hasOffers ? (
               <p>No quote requests yet.</p>
             ) : (
               <table>
@@ -116,10 +159,12 @@ function CRMPage() {
         );
       
       case 'assessments':
+        const hasAssessments = Array.isArray(assessments) && assessments.length > 0;
         return (
           <div className="assessments-table">
-            <h3>Recent Assessments ({assessments.length})</h3>
-            {assessments.length === 0 ? (
+            <h3>Recent Assessments ({hasAssessments ? assessments.length : 0})</h3>
+            {dataErrors.assessments && <div className="error-banner">{dataErrors.assessments}</div>}
+            {!hasAssessments ? (
               <p>No assessments recorded yet.</p>
             ) : (
               <table>
@@ -151,10 +196,12 @@ function CRMPage() {
         );
       
       case 'appointments':
+         const hasAppointments = Array.isArray(appointments) && appointments.length > 0;
         return (
           <div className="appointments-table">
-            <h3>Upcoming Appointments ({appointments.length})</h3>
-            {appointments.length === 0 ? (
+            <h3>Upcoming Appointments ({hasAppointments ? appointments.length : 0})</h3>
+            {dataErrors.appointments && <div className="error-banner">{dataErrors.appointments}</div>}
+            {!hasAppointments ? (
               <p>No appointments scheduled yet.</p>
             ) : (
               <table>
@@ -184,10 +231,12 @@ function CRMPage() {
         );
       
       case 'interactions':
+        const hasEntries = Array.isArray(entries) && entries.length > 0;
         return (
           <div className="interactions-table">
-            <h3>Recent Customer Interactions ({entries.length})</h3>
-            {entries.length === 0 ? (
+            <h3>Recent Customer Interactions ({hasEntries ? entries.length : 0})</h3>
+            {dataErrors.entries && <div className="error-banner">{dataErrors.entries}</div>}
+            {!hasEntries ? (
               <p>No customer interactions recorded yet.</p>
             ) : (
               <table>
@@ -229,57 +278,59 @@ function CRMPage() {
       </div>
       
       <div className="crm-stats">
+        {/* Ensure length is checked safely */}
         <div className="stat-card">
-          <h3>{offers.length}</h3>
+          <h3>{Array.isArray(offers) ? offers.length : 0}</h3>
           <p>Quote Requests</p>
         </div>
         <div className="stat-card">
-          <h3>{appointments.length}</h3>
+          <h3>{Array.isArray(appointments) ? appointments.length : 0}</h3>
           <p>Appointments</p>
         </div>
         <div className="stat-card">
-          <h3>{entries.length}</h3>
+          <h3>{Array.isArray(entries) ? entries.length : 0}</h3>
           <p>Total Interactions</p>
         </div>
         <div className="stat-card">
-          <h3>{assessments.length}</h3>
+          <h3>{Array.isArray(assessments) ? assessments.length : 0}</h3>
           <p>Assessments</p>
         </div>
       </div>
       
       <div className="tabs">
+        {/* Tab buttons */}
         <button 
-          className={`tab-button ${activeTab === 'calendar' ? 'active' : ''}`}
-          onClick={() => setActiveTab('calendar')}
+          onClick={() => setActiveTab('calendar')} 
+          className={activeTab === 'calendar' ? 'active' : ''}
         >
           Calendar
         </button>
         <button 
-          className={`tab-button ${activeTab === 'offers' ? 'active' : ''}`}
-          onClick={() => setActiveTab('offers')}
+          onClick={() => setActiveTab('offers')} 
+          className={activeTab === 'offers' ? 'active' : ''}
         >
-          Quotes
+          Quote Requests
         </button>
         <button 
-          className={`tab-button ${activeTab === 'assessments' ? 'active' : ''}`}
-          onClick={() => setActiveTab('assessments')}
+          onClick={() => setActiveTab('assessments')} 
+          className={activeTab === 'assessments' ? 'active' : ''}
         >
           Assessments
         </button>
         <button 
-          className={`tab-button ${activeTab === 'appointments' ? 'active' : ''}`}
-          onClick={() => setActiveTab('appointments')}
+          onClick={() => setActiveTab('appointments')} 
+          className={activeTab === 'appointments' ? 'active' : ''}
         >
           Appointments
         </button>
         <button 
-          className={`tab-button ${activeTab === 'interactions' ? 'active' : ''}`}
-          onClick={() => setActiveTab('interactions')}
+          onClick={() => setActiveTab('interactions')} 
+          className={activeTab === 'interactions' ? 'active' : ''}
         >
           Interactions
         </button>
       </div>
-      
+
       <div className="tab-content">
         {renderTabContent()}
       </div>

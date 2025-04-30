@@ -5,13 +5,13 @@ import '../styles/Chatbot.css';
 // Helper to render confirmation details
 const ConfirmationDetails = ({ details }) => (
   <div className="confirmation-details">
-    {details.name && <div><strong>Name:</strong> {details.name}</div>}
-    {details.phone && <div><strong>Phone:</strong> {details.phone}</div>}
-    {details.email && <div><strong>Email:</strong> {details.email}</div>}
-    {details.type && <div><strong>Type:</strong> {details.type}</div>}
-    {details.address && <div><strong>Address:</strong> {details.address}</div>}
-    {details.reason && <div><strong>Reason:</strong> {details.reason}</div>}
-    {details.time && <div><strong>Time:</strong> {details.time}</div>}
+    {details.name && <div className="detail-item"><span className="detail-label">Name:</span> {details.name}</div>}
+    {details.phone && <div className="detail-item"><span className="detail-label">Phone:</span> {details.phone}</div>}
+    {details.email && <div className="detail-item"><span className="detail-label">Email:</span> {details.email}</div>}
+    {details.type && <div className="detail-item"><span className="detail-label">Type:</span> {details.type}</div>}
+    {details.address && <div className="detail-item"><span className="detail-label">Address:</span> {details.address}</div>}
+    {details.reason && <div className="detail-item"><span className="detail-label">Reason:</span> {details.reason}</div>}
+    {details.time && <div className="detail-item"><span className="detail-label">Time:</span> {details.time}</div>}
   </div>
 );
 
@@ -71,6 +71,58 @@ function Confirmation({ details, prompt, buttons, onAction }) {
   );
 }
 
+// Add a feedback component to show confidence and collect feedback
+const ResponseFeedback = ({ confidence, reasoning, feedbackOptions, onFeedback }) => {
+  // Format confidence as percentage
+  const confidencePercent = confidence !== undefined 
+    ? `${Math.round(confidence * 100)}%` 
+    : null;
+
+  return (
+    <div className="response-feedback">
+      {confidence !== undefined && (
+        <div className="confidence-indicator">
+          <div className="confidence-label">AI Confidence:</div>
+          <div className="confidence-meter">
+            <div 
+              className="confidence-fill" 
+              style={{ 
+                width: `${Math.round(confidence * 100)}%`,
+                backgroundColor: confidence > 0.8 ? '#4CAF50' : confidence > 0.5 ? '#FFC107' : '#F44336'
+              }}
+            ></div>
+          </div>
+          <div className="confidence-value">{confidencePercent}</div>
+        </div>
+      )}
+      
+      {reasoning && (
+        <div className="reasoning">
+          <span className="reasoning-icon">ℹ️</span>
+          <span className="reasoning-text">{reasoning}</span>
+        </div>
+      )}
+      
+      {feedbackOptions && feedbackOptions.showOptions && (
+        <div className="feedback-options">
+          <div className="feedback-label">Was this response helpful?</div>
+          <div className="feedback-buttons">
+            {feedbackOptions.options.map(option => (
+              <button 
+                key={option.id}
+                className="feedback-button"
+                onClick={() => onFeedback(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
@@ -83,6 +135,7 @@ function Chatbot() {
   const [emailSkipped, setEmailSkipped] = useState(false);
   const [conversationId, setConversationId] = useState(null);
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
 
   // --- State for Confirmation Editing --- START
   const [editingConfirmationIndex, setEditingConfirmationIndex] = useState(null);
@@ -92,7 +145,41 @@ function Chatbot() {
   // Auto-scroll to bottom of messages
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isOpen]);
+
+  // Effect for handling external trigger for starting intake process
+  useEffect(() => {
+    const handleIntakeProcess = (event) => {
+      if (!isOpen) {
+        setIsOpen(true);
+      }
+      
+      // Add a slight delay to ensure the chat is open
+      setTimeout(() => {
+        const message = event.detail.message;
+        if (message && typeof message === 'string') {
+          setInput(message);
+          // Submit the message automatically
+          handleSubmit({ preventDefault: () => {} });
+        }
+      }, 300);
+    };
+
+    // Listen for the custom event
+    document.addEventListener('startIntakeProcess', handleIntakeProcess);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('startIntakeProcess', handleIntakeProcess);
+    };
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Focus on input when chat opens
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isOpen]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -143,7 +230,9 @@ function Chatbot() {
         role: 'assistant', 
         content: response.data.text,
         type: response.data.type,
-        data: response.data.data
+        data: response.data.data,
+        confidence: response.data.confidence,
+        reasoning: response.data.reasoning
       }]);
 
       // Store the conversationId from the response if not set
@@ -234,6 +323,64 @@ function Chatbot() {
   };
   // --- Confirmation Handlers --- END
 
+  // Add feedback handler
+  const handleFeedback = useCallback(async (messageIndex, feedbackType) => {
+    // In a real app, this would send the feedback to the server
+    console.log(`Feedback for message ${messageIndex}: ${feedbackType}`);
+    
+    const message = messages[messageIndex];
+    const previousUserMessage = messages[messageIndex - 1]; // Assuming user message always precedes assistant message
+
+    if (!message || message.role !== 'assistant' || !previousUserMessage || previousUserMessage.role !== 'user') {
+      console.error("Could not find relevant messages for feedback submission.");
+      return; // Prevent sending incomplete feedback
+    }
+
+    const feedbackPayload = {
+      conversationId: message.data?.conversationId || conversationId, // Get conversationId from message data or state
+      messageIndex: messageIndex,
+      userQuery: previousUserMessage.content,
+      agentResponse: message.content,
+      feedbackType: feedbackType,
+    };
+
+    if (!feedbackPayload.conversationId) {
+       console.error("Cannot submit feedback: Conversation ID is missing.");
+       return;
+    }
+
+    try {
+      setLoading(true); // Indicate activity
+      await axios.post('/api/feedback', feedbackPayload);
+      console.log("Feedback submitted successfully.");
+      // Update the message UI immediately after successful submission
+      setMessages(prevMessages => {
+        const updatedMessages = [...prevMessages];
+        if (updatedMessages[messageIndex] && updatedMessages[messageIndex].data) {
+          updatedMessages[messageIndex] = {
+            ...updatedMessages[messageIndex],
+            data: {
+              ...updatedMessages[messageIndex].data,
+              feedbackOptions: {
+                ...(updatedMessages[messageIndex].data.feedbackOptions || {}),
+                showOptions: false,
+                submitted: feedbackType
+              }
+            }
+          };
+        }
+        return updatedMessages;
+      });
+
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      // Optionally show an error to the user
+    } finally {
+       setLoading(false);
+    }
+
+  }, [messages, conversationId]); // Add messages and conversationId to dependencies
+
   // Format message content based on message type
   const formatMessage = (message, index) => {
     if (message.role === 'user') {
@@ -323,8 +470,27 @@ function Chatbot() {
       );
     }
     
-    // Default for other types or plain text
-    return <div dangerouslySetInnerHTML={{ __html: formattedContent }} />;
+    // Add feedback component for text responses
+    const showFeedback = message.type === 'text' && 
+                         (message.confidence !== undefined ||
+                          message.reasoning ||
+                          // Explicitly check the showOptions flag
+                          (message.data?.feedbackOptions?.showOptions === true));
+
+    return (
+      <div>
+        <div dangerouslySetInnerHTML={{ __html: formattedContent }} />
+        
+        {showFeedback && (
+          <ResponseFeedback 
+            confidence={message.confidence}
+            reasoning={message.reasoning}
+            feedbackOptions={message.data && message.data.feedbackOptions}
+            onFeedback={(feedbackType) => handleFeedback(index, feedbackType)}
+          />
+        )}
+      </div>
+    );
   };
 
   return (
@@ -368,25 +534,32 @@ function Chatbot() {
           
           <form className="chat-input" onSubmit={handleSubmit}>
             <input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={!isEmailSet && !emailSkipped ? "Please enter your email..." : "Type your message..."}
               disabled={loading || editingConfirmationIndex !== null}
             />
-            <button type="submit" disabled={loading || !input.trim() || editingConfirmationIndex !== null}>
-              Send
-            </button>
-            {!isEmailSet && !emailSkipped && (
+            <div className="button-container">
               <button 
-                type="button" 
-                className="skip-button"
-                onClick={skipEmail}
-                disabled={loading}
+                type="submit" 
+                disabled={loading || !input.trim() || editingConfirmationIndex !== null}
+                className="send-button"
               >
-                Skip
+                Send
               </button>
-            )}
+              {!isEmailSet && !emailSkipped && (
+                <button 
+                  type="button" 
+                  className="skip-button"
+                  onClick={skipEmail}
+                  disabled={loading}
+                >
+                  Skip
+                </button>
+              )}
+            </div>
           </form>
         </div>
       )}

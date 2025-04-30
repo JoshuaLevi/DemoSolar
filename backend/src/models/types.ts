@@ -6,9 +6,10 @@ export interface AgentResponse {
   text: string;
   type: 'text' | 'offer' | 'appointment' | 'assessment' | 'handoff' | 'confirmation';
   data?: any;
-  confidence?: number;
+  confidence: number;
   sources?: string[];
   nextAgent?: AgentType;
+  reasoning?: string;
 }
 
 // CRM Entry type for logging interactions
@@ -75,6 +76,7 @@ export interface PropertyAssessment {
 
 // User type (new)
 export interface User {
+  id: string;
   email: string;
   name?: string;
   phoneNumber?: string;
@@ -90,11 +92,13 @@ export interface User {
 
 // Conversation memory types (new)
 export interface ConversationTurn {
+  id: string;
   timestamp: string;
   userQuery: string;
   agentResponse: string;
   agentType: AgentType;
   conversationId: string;
+  userEmail: string;
 }
 
 // Financing option type (new)
