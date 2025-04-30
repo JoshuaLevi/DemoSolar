@@ -45,13 +45,13 @@ flowchart TB
     end
     
     %% Styling
-    classDef user fill:#f9f,stroke:#333,stroke-width:2px
-    classDef frontend fill:#bbf,stroke:#333,stroke-width:1px
-    classDef agent fill:#ffd700,stroke:#333,stroke-width:2px
-    classDef primaryAgent fill:#ff9900,stroke:#333,stroke-width:2px
-    classDef database fill:#bfb,stroke:#333,stroke-width:1px
-    classDef azure fill:#0072C6,stroke:#fff,stroke-width:1px,color:#fff
-    classDef tool fill:#ffb,stroke:#333,stroke-width:1px
+    classDef user fill:#f9f,stroke:#333,stroke-width:2px,color:#000
+    classDef frontend fill:#bbf,stroke:#333,stroke-width:1px,color:#000
+    classDef agent fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+    classDef primaryAgent fill:#ff9900,stroke:#333,stroke-width:2px,color:#000
+    classDef database fill:#bfb,stroke:#333,stroke-width:1px,color:#000
+    classDef azure fill:#0072C6,stroke:#333,stroke-width:1px,color:#000
+    classDef tool fill:#ffb,stroke:#333,stroke-width:1px,color:#000
     
     class User user
     class FrontendUI,BackendAPI frontend
