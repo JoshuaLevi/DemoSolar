@@ -14,70 +14,75 @@ Based on prototype testing, systems like this could potentially deliver:
 The DemoSolar AI Agent System implements a multi-agent architecture that leverages Azure AI services:
 
 ```mermaid
-graph TD
-    User(User) <--> Frontend[Frontend UI]
-    Frontend <--> API[Backend API]
+flowchart TB
+    User((Customer)) <--> FrontendUI[Frontend UI]
+    FrontendUI <--> BackendAPI[Backend API]
     
-    subgraph "Multi-Agent System"
-        API --> Orchestrator[Orchestration Agent]
+    subgraph "Agent System"
+        direction TB
+        BackendAPI --> Orchestrator
         
-        Orchestrator --> CS[Customer Support Agent]
-        Orchestrator --> SA[Solar Assessment Agent]
-        Orchestrator --> PA[Proposal Agent]
-        Orchestrator --> CRM[CRM Agent]
+        Orchestrator[Orchestration Agent]
         
-        CS --> KB[(Knowledge Base)]
-        CS --> WebSearch[Web Search]
-        SA --> Tools[External Tools]
-        PA --> Offers[(Proposals/Offers)]
-        CRM --> Appointments[(Appointments)]
-    end
-    
-    subgraph "Feedback System"
-        User --> FC[Feedback Collection]
-        FC --> FeedbackDB[(Feedback Storage)]
+        Orchestrator --> SupportAgent[Customer Support Agent]
+        Orchestrator --> AssessmentAgent[Solar Assessment Agent]
+        Orchestrator --> ProposalAgent[Proposal Agent]
+        Orchestrator --> CRMAgent[CRM Agent]
+        
+        SupportAgent --> KnowledgeBase[(Knowledge Base)]
+        SupportAgent --> WebSearch{{Web Search}}
+        AssessmentAgent --> Tools{{External Tools}}
+        ProposalAgent --> Proposals[(Proposals DB)]
+        CRMAgent --> Appointments[(Appointments DB)]
     end
     
     subgraph "Azure Services"
-        KB --> AzSearch[Azure AI Search]
-        WebSearch --> BraveAPI[Brave Search API]
-        Tools --> AzOpenAI[Azure OpenAI]
-        Orchestrator --> AzOpenAI
-        CosmosDB[(Azure Cosmos DB)] --> Appointments
-        CosmosDB --> Offers
-        CosmosDB --> FeedbackDB
+        direction TB
+        KnowledgeBase -.-> AzureSearch[Azure AI Search]
+        WebSearch -.-> BraveAPI[Brave Search API]
+        Orchestrator & SupportAgent & AssessmentAgent & ProposalAgent & CRMAgent -.-> AzureOpenAI[Azure OpenAI]
+        Proposals & Appointments -.-> CosmosDB[(Azure Cosmos DB)]
     end
     
-    classDef primary fill:#f9f,stroke:#333,stroke-width:2px
-    classDef secondary fill:#bbf,stroke:#333,stroke-width:1px
-    classDef azure fill:#bfb,stroke:#333,stroke-width:1px
-    classDef utility fill:#ffb,stroke:#333,stroke-width:1px
+    %% Styling
+    classDef user fill:#f9f,stroke:#333,stroke-width:2px
+    classDef frontend fill:#bbf,stroke:#333,stroke-width:1px
+    classDef agent fill:#ffd700,stroke:#333,stroke-width:2px
+    classDef primaryAgent fill:#ff9900,stroke:#333,stroke-width:2px
+    classDef database fill:#bfb,stroke:#333,stroke-width:1px
+    classDef azure fill:#0072C6,stroke:#fff,stroke-width:1px,color:#fff
+    classDef tool fill:#ffb,stroke:#333,stroke-width:1px
     
-    class Orchestrator primary
-    class Frontend,API secondary
-    class AzOpenAI,AzSearch,CosmosDB azure
-    class FC,WebSearch utility
+    class User user
+    class FrontendUI,BackendAPI frontend
+    class Orchestrator primaryAgent
+    class SupportAgent,AssessmentAgent,ProposalAgent,CRMAgent agent
+    class KnowledgeBase,Proposals,Appointments database
+    class AzureSearch,AzureOpenAI,CosmosDB,BraveAPI azure
+    class WebSearch,Tools tool
 ```
 
-The diagram shows:
+The system architecture follows a multi-agent design:
 
-1. **User Interaction Layer**: Users interact with the frontend UI, which communicates with the backend API.
+### User Interaction Layer
+- **Customer**: Interacts with the system through a web interface
+- **Frontend UI**: React-based user interface with chatbot component
+- **Backend API**: Express server handling communication between frontend and agents
 
-2. **Multi-Agent System**: At the core is the Orchestration Agent, which routes requests to specialized agents:
-   - Customer Support Agent: Provides information using knowledge base and web search
-   - Solar Assessment Agent: Evaluates customer needs using external tools
-   - Proposal Agent: Generates customized recommendations and quotes
-   - CRM Agent: Manages appointment scheduling
+### Agent System
+- **Orchestration Agent**: Central coordinator that routes requests to specialized agents
+- **Customer Support Agent**: Handles educational queries using knowledge base and web search
+- **Solar Assessment Agent**: Evaluates customer requirements and property details
+- **Proposal Agent**: Generates quotes and recommendations based on assessment data
+- **CRM Agent**: Manages appointment scheduling and customer information
 
-3. **Feedback System**: Collects and stores user feedback to potentially improve the system.
+### Azure Services Integration
+- **Azure OpenAI**: Powers all agent intelligence and natural language processing
+- **Azure AI Search**: Provides knowledge retrieval for the Customer Support Agent
+- **Azure Cosmos DB**: Persistent storage for all system data (proposals, appointments, etc.)
+- **Brave Search API**: External service for web search capability
 
-4. **Azure Services**: Provides the backend infrastructure:
-   - Azure OpenAI: Powers all agents with AI capabilities
-   - Azure AI Search: Enables knowledge retrieval for the support agent
-   - Azure Cosmos DB: Persistent storage for all system data
-   - Brave Search API: Provides web search capabilities when needed
-
-This architecture enables seamless transitions between different AI agents based on user needs, creating a coherent and efficient user experience.
+This architecture enables seamless handoffs between specialized agents while maintaining conversation context, creating a smooth customer experience from initial inquiry through consultation scheduling.
 
 ## 🧠 AI Agent Design Patterns
 
