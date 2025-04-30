@@ -1,6 +1,6 @@
 import express from 'express';
-import { getCRMEntries } from '../agents/mainAgent';
-import { getAllOffers } from '../agents/offerAgent';
+import { getCRMEntries } from '../agents/orchestrationAgent';
+import { getAllOffers } from '../agents/proposalAgent';
 import { addCalendarAppointment, getAvailableTimeSlotsForDate } from '../agents/intakeAgent';
 import { assessmentsContainer, appointmentsContainer } from '../utils/cosmosClient';
 
@@ -9,7 +9,7 @@ const router = express.Router();
 // Get all CRM entries
 router.get('/entries', async (req, res) => {
   try {
-    const entries = getCRMEntries();
+    const entries = await getCRMEntries();
     return res.status(200).json(entries);
   } catch (error) {
     console.error('Error fetching CRM entries:', error);
@@ -17,10 +17,9 @@ router.get('/entries', async (req, res) => {
   }
 });
 
-// Get all offers - FIXED to use async/await properly
+// Get all offers
 router.get('/offers', async (req, res) => {
   try {
-    // Properly await the async function result
     const offers = await getAllOffers();
     return res.status(200).json(offers);
   } catch (error) {

@@ -1,3 +1,9 @@
+// =====================================================
+// DEPRECATED: This file is deprecated and will be removed. 
+// Please use customerSupportAgent.ts instead.
+// Only kept for backward compatibility with mainAgent.ts.
+// =====================================================
+
 import { AgentResponse } from '../models/types';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';

@@ -1,3 +1,9 @@
+// =====================================================
+// DEPRECATED: This file is deprecated and will be removed. 
+// Please use orchestrationAgent.ts instead.
+// Only kept for backward compatibility with crmRoutes.ts.
+// =====================================================
+
 import { handleInfoQuery } from './infoAgent';
 import { handleOfferCreation } from './offerAgent';
 import { handleAppointmentBooking } from './intakeAgent';

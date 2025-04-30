@@ -1,3 +1,9 @@
+// =====================================================
+// DEPRECATED: This file is deprecated and will be removed. 
+// Please use crmAgent.ts instead.
+// Only kept for backward compatibility with mainAgent.ts and crmRoutes.ts.
+// =====================================================
+
 import { AgentResponse, Appointment } from '../models/types';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';

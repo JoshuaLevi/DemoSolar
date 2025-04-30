@@ -31,11 +31,11 @@ graph TD
         SA --> Tools[External Tools]
         PA --> Offers[(Proposals/Offers)]
         CRM --> Appointments[(Appointments)]
-        
-        subgraph "Feedback System"
-            User --> Feedback[Feedback Collection]
-            Feedback --> FeedbackDB[(Feedback Storage)]
-        end
+    end
+    
+    subgraph "Feedback System"
+        User --> FC[Feedback Collection]
+        FC --> FeedbackDB[(Feedback Storage)]
     end
     
     subgraph "Azure Services"
@@ -48,15 +48,36 @@ graph TD
         CosmosDB --> FeedbackDB
     end
     
-    style Orchestrator fill:#f9f,stroke:#333,stroke-width:2px
-    style Frontend fill:#bbf,stroke:#333,stroke-width:1px
-    style API fill:#bbf,stroke:#333,stroke-width:1px
-    style AzOpenAI fill:#bfb,stroke:#333,stroke-width:1px
-    style AzSearch fill:#bfb,stroke:#333,stroke-width:1px
-    style CosmosDB fill:#bfb,stroke:#333,stroke-width:1px
-    style Feedback fill:#ffb,stroke:#333,stroke-width:1px
-    style WebSearch fill:#ffb,stroke:#333,stroke-width:1px
+    classDef primary fill:#f9f,stroke:#333,stroke-width:2px
+    classDef secondary fill:#bbf,stroke:#333,stroke-width:1px
+    classDef azure fill:#bfb,stroke:#333,stroke-width:1px
+    classDef utility fill:#ffb,stroke:#333,stroke-width:1px
+    
+    class Orchestrator primary
+    class Frontend,API secondary
+    class AzOpenAI,AzSearch,CosmosDB azure
+    class FC,WebSearch utility
 ```
+
+The diagram shows:
+
+1. **User Interaction Layer**: Users interact with the frontend UI, which communicates with the backend API.
+
+2. **Multi-Agent System**: At the core is the Orchestration Agent, which routes requests to specialized agents:
+   - Customer Support Agent: Provides information using knowledge base and web search
+   - Solar Assessment Agent: Evaluates customer needs using external tools
+   - Proposal Agent: Generates customized recommendations and quotes
+   - CRM Agent: Manages appointment scheduling
+
+3. **Feedback System**: Collects and stores user feedback to potentially improve the system.
+
+4. **Azure Services**: Provides the backend infrastructure:
+   - Azure OpenAI: Powers all agents with AI capabilities
+   - Azure AI Search: Enables knowledge retrieval for the support agent
+   - Azure Cosmos DB: Persistent storage for all system data
+   - Brave Search API: Provides web search capabilities when needed
+
+This architecture enables seamless transitions between different AI agents based on user needs, creating a coherent and efficient user experience.
 
 ## 🧠 AI Agent Design Patterns
 
@@ -151,9 +172,10 @@ demosolar/
     │   ├── agents/      # AI agent modules
     │   │   ├── orchestrationAgent.ts  # Central routing agent
     │   │   ├── customerSupportAgent.ts # Educational support
-    │   │   ├── assessmentAgent.ts     # Needs evaluation
+    │   │   ├── solarAssessmentAgent.ts # Needs evaluation
     │   │   ├── proposalAgent.ts       # Quote generation
-    │   │   └── crmAgent.ts            # Appointment scheduling
+    │   │   ├── crmAgent.ts            # Appointment scheduling
+    │   │   └── systemPrompts.ts       # Agent prompts and templates
     │   ├── routes/      # API routes
     │   ├── models/      # Type definitions
     │   ├── utils/       # Utility functions
@@ -161,7 +183,7 @@ demosolar/
     │   │   ├── azureSearch.ts        # AI Search integration
     │   │   ├── cosmosDB.ts           # Cosmos DB integration
     │   │   ├── webSearch.ts          # Brave Search integration
-    │   │   └── ...
+    │   │   └── responsibleAI.ts      # AI confidence and reasoning utilities
     │   └── index.ts     # Server entry point
     └── ...
 ```
