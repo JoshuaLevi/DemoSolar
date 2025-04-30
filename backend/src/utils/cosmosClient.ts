@@ -8,6 +8,9 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const connectionString = process.env.AZURE_COSMOS_DB_CONNECTION_STRING;
 const databaseName = process.env.AZURE_COSMOS_DB_DATABASE_NAME || "demosolar_db"; // Default fallback
 const containerName = process.env.AZURE_COSMOS_DB_CONTAINER_NAME || "conversations"; // Default fallback
+const assessmentsContainerName = "assessments"; // Define the new container name
+const proposalsContainerName = "proposals"; // Define the proposals container name
+const appointmentsContainerName = "appointments"; // Define the appointments container name
 
 // Validate the connection string
 if (!connectionString) {
@@ -26,11 +29,17 @@ try {
 // Get a reference to the database and container
 const database = cosmosClient.database(databaseName);
 const container = database.container(containerName);
+const assessmentsContainer = database.container(assessmentsContainerName); // Get reference to assessments container
+const proposalsContainer = database.container(proposalsContainerName); // Get reference to proposals container
+const appointmentsContainer = database.container(appointmentsContainerName); // Get reference to appointments container
 
 console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${containerName}'`);
+console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${assessmentsContainerName}'`);
+console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${proposalsContainerName}'`);
+console.log(`Initialized Cosmos DB client for database '${databaseName}' and container '${appointmentsContainerName}'`); // Add log
 
 // Export the container instance for use in other parts of the application
-export { container, database, cosmosClient };
+export { container, database, cosmosClient, assessmentsContainer, proposalsContainer, appointmentsContainer }; // Add appointmentsContainer to exports
 
 // Optional: Add a function to ensure database and container exist (useful for first run)
 // async function ensureDbAndContainerExist() {

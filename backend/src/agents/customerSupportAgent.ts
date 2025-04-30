@@ -1,20 +1,39 @@
-import { AgentResponse, ConversationTurn, KnowledgeDocument } from '../models/types';
+import { AgentResponse, ConversationTurn, KnowledgeDocument, AgentType } from '../models/types';
+import { AzureOpenAI, OpenAI } from "openai"; // Import the main client from 'openai'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'; // Import specific type
+import "@azure/openai/types"; // Import Azure-specific types (side effects)
 import { customerSupportAgentPrompt } from './systemPrompts';
-// Temporarily comment out OpenAI imports due to persistent TS errors
-// import { OpenAIClient, AzureKeyCredential } from "@azure/openai";
+// Removed old @azure/openai import
 import dotenv from 'dotenv';
 // Import the search service function
 import { performKeywordSearch } from '../services/searchService';
-// Import Cosmos container for logging (if needed later)
-// import { container as cosmosContainer } from '../utils/cosmosClient';
+// Import Cosmos container for logging
+import { container as cosmosContainer } from '../utils/cosmosClient';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid for generating unique IDs
 
 dotenv.config();
 
-// Temporarily comment out OpenAI client initialization
-// const client = new OpenAIClient(
-//   process.env.AZURE_OPENAI_ENDPOINT || '',
-//   new AzureKeyCredential(process.env.AZURE_OPENAI_API_KEY || '')
-// );
+// --- Correct AzureOpenAI Client Initialization ---
+const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o-mini';
+const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview'; // Use a recent API version
+
+// Endpoint and Key should be loaded from .env by dotenv
+if (!process.env.AZURE_OPENAI_ENDPOINT) {
+    throw new Error("AZURE_OPENAI_ENDPOINT is not set in environment variables.");
+}
+if (!process.env.AZURE_OPENAI_API_KEY) {
+    throw new Error("AZURE_OPENAI_API_KEY is not set in environment variables.");
+}
+
+// Initialize the client using the correct class and options
+const client = new AzureOpenAI({
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+    apiKey: process.env.AZURE_OPENAI_API_KEY,
+    apiVersion: apiVersion,
+    // deployment: deployment, // Deployment name can often be omitted here if specified in the call
+});
+
+console.log(`Initialized AzureOpenAI client for deployment '${deployment}' and apiVersion '${apiVersion}'`);
 
 // --- Remove the hardcoded solarFAQ array --- 
 // const solarFAQ = [...]; 
@@ -51,6 +70,7 @@ const findRelevantInformation = async (query: string): Promise<{ answer: string,
       } else {
          console.log("No RAG documents found, falling back to generateResponse.");
       }
+      // Call the disabled generateResponse function
       return generateResponse(query);
     }
   } catch (error) {
@@ -61,38 +81,30 @@ const findRelevantInformation = async (query: string): Promise<{ answer: string,
   }
 };
 
-// Temporarily disable the body of generateResponse
+// Re-enable the body of generateResponse
 const generateResponse = async (query: string, context?: string): Promise<{ answer: string, confidence: number, sources: string[] }> => {
-  console.warn("generateResponse called, but OpenAI client is currently disabled due to import issues.");
-  // Return a placeholder response
-  return {
-    answer: "I found some information in my knowledge base, but I'm currently unable to generate a more detailed response. Please check the provided source.",
-    // If RAG failed, we might not even have a source, provide generic error
-    // answer: "I'm currently unable to process this request fully due to an internal issue. Please try again later or rephrase your query.",
-    confidence: 0.3, // Low confidence as it's not a full response
-    sources: ['OpenAI Fallback Disabled']
-  };
-  /* // Original OpenAI call commented out
-  try {
-    const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o-mini';
-    const messages = [
+   try {
+    // Explicitly define the type for the messages array
+    const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: customerSupportAgentPrompt },
       // Add context if provided (e.g., about search failure)
-      ...(context ? [{ role: 'system', content: `Context: ${context}` }] : []),
+      ...(context ? [{ role: 'system' as const, content: `Context: ${context}` }] : []),
       { role: 'user', content: query }
     ];
+    if (!client) throw new Error("OpenAI client is not initialized.");
 
-    const response = await client.getChatCompletions(
-      deployment,
-      messages,
-      { temperature: 0.7, maxTokens: 500 }
-    );
+    // Use the deployment name in the create call
+    const response = await client.chat.completions.create({
+        model: deployment, // Specify the deployment name here
+        messages: messages, // Pass the correctly typed array
+        temperature: 0.7,
+        max_tokens: 500
+    });
 
     const content = response.choices[0]?.message?.content || 'I apologize, I couldn\'t generate a helpful response.';
-
     return {
       answer: content,
-      confidence: 0.6, // Keep slightly lower confidence for purely generated answers
+      confidence: 0.6,
       sources: ['Generated response based on general knowledge']
     };
   } catch (error) {
@@ -103,7 +115,6 @@ const generateResponse = async (query: string, context?: string): Promise<{ answ
       sources: []
     };
   }
-  */
 };
 
 // Check for Handoff (remains the same)
@@ -159,69 +170,114 @@ const checkForHandoff = (query: string): { needsHandoff: boolean, nextAgent?: st
   return { needsHandoff: false };
 };
 
-// Apply Metacognition (remains mostly the same, sources are now different)
-const applyMetacognition = (response: { answer: string, confidence: number, sources: string[] }, query: string): { answer: string, confidence: number, sources: string[] } => {
-    // ... existing metacognition logic ...
-  // If confidence is low, acknowledge uncertainty
-  if (response.confidence < 0.4 && !response.sources.includes('OpenAI Fallback Disabled')) {
-    const improvedResponse = {
-      answer: `I'm not entirely certain about this, but based on my general knowledge: ${response.answer} Would you like me to connect you with a solar specialist who can provide more detailed information?`,
-      confidence: response.confidence,
-      sources: response.sources
-    };
-    return improvedResponse;
-  }
-  
-  // If we have specific sources (from RAG), cite them
-  if (response.sources && response.sources.length > 0 && response.sources[0].startsWith('Knowledge Base:')) {
-    // Avoid double citing if already present
-    if (!response.answer.toLowerCase().includes('based on my knowledge base') && !response.answer.toLowerCase().includes(response.sources[0].toLowerCase())) {
-       const improvedResponse = {
-        answer: `${response.answer}\n\n(Source: ${response.sources[0]})`,
-        confidence: response.confidence,
-        sources: response.sources
-      };
-      return improvedResponse;
+// Apply Metacognition - Updated to accept and return AgentResponse
+const applyMetacognition = (
+    response: AgentResponse, // Accept AgentResponse
+    query: string
+): AgentResponse => { // Return AgentResponse
+    // If confidence is low, acknowledge uncertainty
+    if (response.confidence && response.confidence < 0.4 && !response.sources?.includes('OpenAI Fallback Disabled')) {
+        // Create a new AgentResponse object for the modified response
+        const improvedResponse: AgentResponse = {
+            ...response, // Copy existing fields
+            text: `I'm not entirely certain about this, but based on my general knowledge: ${response.text} Would you like me to connect you with a solar specialist who can provide more detailed information?`
+        };
+        return improvedResponse;
     }
-  }
-  
-  return response;
+
+    // If we have specific sources (from RAG), cite them
+    if (response.sources && response.sources.length > 0 && response.sources[0].startsWith('Knowledge Base:')) {
+        // Avoid double citing if already present
+        if (!response.text.toLowerCase().includes('based on my knowledge base') && !response.text.toLowerCase().includes(response.sources[0].toLowerCase())) {
+            // Create a new AgentResponse object for the modified response
+            const improvedResponse: AgentResponse = {
+                ...response, // Copy existing fields
+                text: `${response.text}\n\n(Source: ${response.sources[0]})`
+            };
+            return improvedResponse;
+        }
+    }
+
+    // If no changes needed, return the original response object
+    return response;
 };
 
-// Main handler function - updated to call findRelevantInformation
+// --- Logging Function --- 
+/**
+ * Logs a conversation turn to Cosmos DB.
+ */
+async function logConversationStep(
+    conversationId: string,
+    userQuery: string,
+    agentResponse: AgentResponse,
+    agentName: AgentType = 'customerSupport'
+) {
+  const logItem = {
+    id: uuidv4(), // Generate a unique ID for this log entry
+    conversationId: conversationId, // Partition key
+    timestamp: new Date().toISOString(),
+    agentName: agentName,
+    userQuery: userQuery,
+    agentResponseText: agentResponse.text,
+    type: agentResponse.type,
+    confidence: agentResponse.confidence,
+    sources: agentResponse.sources,
+    // Add other relevant fields if needed, like userEmail if available
+  };
+
+  try {
+    await cosmosContainer.items.create(logItem);
+    console.log(`Logged conversation step for conversation ${conversationId} with id ${logItem.id}`);
+  } catch (error) {
+    console.error(`Error logging conversation step to Cosmos DB for conversation ${conversationId}:`, error);
+    // Decide how to handle logging errors (e.g., continue without logging?)
+  }
+}
+
+// Main handler function - updated to include logging
 export const handleCustomerSupport = async (
   message: string,
   userEmail?: string,
   conversationHistory?: ConversationTurn[]
 ): Promise<AgentResponse> => {
+  // --- Determine Conversation ID --- 
+  // Try to get from history, otherwise start a new one
+  // In a real app, the frontend/orchestrator might manage this more robustly
+  const conversationId = conversationHistory?.[0]?.conversationId || uuidv4();
+  console.log(`Handling support request for conversation ID: ${conversationId}`);
+
   // 1. Check for handoff first
   const handoffCheck = checkForHandoff(message);
   if (handoffCheck.needsHandoff && handoffCheck.nextAgent) {
-    // ... existing handoff return block ...
-    return {
-      text: `I'd be happy to help with that. Let me connect you with our ${handoffCheck.nextAgent === 'solarAssessment' ? 'Solar Assessment' : handoffCheck.nextAgent === 'proposal' ? 'Proposal' : 'Customer Service'} team who can better assist with your ${handoffCheck.nextAgent === 'solarAssessment' ? 'property assessment' : handoffCheck.nextAgent === 'proposal' ? 'pricing questions' : 'scheduling needs'}.`,
-      type: 'handoff',
-      nextAgent: handoffCheck.nextAgent as any,
-      confidence: 0.9
-    };
+    const handoffResponse: AgentResponse = {
+        text: `I'd be happy to help with that. Let me connect you with our ${handoffCheck.nextAgent === 'solarAssessment' ? 'Solar Assessment' : handoffCheck.nextAgent === 'proposal' ? 'Proposal' : 'Customer Service'} team who can better assist with your ${handoffCheck.nextAgent === 'solarAssessment' ? 'property assessment' : handoffCheck.nextAgent === 'proposal' ? 'pricing questions' : 'scheduling needs'}.`,
+        type: 'handoff',
+        nextAgent: handoffCheck.nextAgent as any,
+        confidence: 0.9
+      };
+    // Log the handoff decision *before* returning
+    await logConversationStep(conversationId, message, handoffResponse, 'customerSupport');
+    return handoffResponse;
   }
 
   // 2. If no handoff, find relevant information using RAG (or fallback generator)
-  let agentResponse = await findRelevantInformation(message);
+  const infoResult = await findRelevantInformation(message);
 
-  // 3. Apply metacognition (e.g., add source citation or uncertainty)
+  // 3. Construct the AgentResponse object *after* getting info
+  let agentResponse: AgentResponse = {
+    text: infoResult.answer,
+    type: 'text',
+    confidence: infoResult.confidence,
+    sources: infoResult.sources,
+  };
+
+  // 4. Apply metacognition (e.g., add source citation or uncertainty)
   agentResponse = applyMetacognition(agentResponse, message);
 
-  // 4. TODO: Log the interaction to Cosmos DB
-  // Example:
-  // const conversationId = conversationHistory?.[0]?.conversationId || crypto.randomUUID(); // Get or create conv ID
-  // logConversationStep(conversationId, message, agentResponse.answer, 'CustomerSupportAgent');
+  // 5. Log the interaction to Cosmos DB *before* returning response
+  // Use await to ensure logging completes before sending response (optional)
+  await logConversationStep(conversationId, message, agentResponse, 'customerSupport');
 
-  // 5. Return the final response
-  return {
-    text: agentResponse.answer,
-    type: 'text',
-    confidence: agentResponse.confidence,
-    sources: agentResponse.sources
-  };
+  // 6. Return the final response
+  return agentResponse;
 }; 

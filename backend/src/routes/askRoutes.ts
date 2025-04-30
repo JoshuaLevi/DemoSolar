@@ -1,33 +1,40 @@
 import express from 'express';
-// Import the specific agent handler we want to test
-import { handleCustomerSupport } from '../agents/customerSupportAgent';
-// Keep the old import commented out for now
-// import { handleUserQuery } from '../agents/mainAgent';
+// Import the main orchestrator handler
+import { handleUserQuery } from '../agents/orchestrationAgent';
+// Keep the old direct agent import commented
+// import { handleCustomerSupport } from '../agents/customerSupportAgent';
 
 const router = express.Router();
 
-// /api/ask endpoint - Now directly calls Customer Support Agent
+// /api/ask endpoint - Calls Orchestrator, handles both text and object messages
 router.post('/ask', async (req, res) => {
   try {
-    // Extract message and potentially userEmail and conversationHistory from body
-    const { message, userEmail, conversationHistory } = req.body;
+    const { userEmail, conversationId } = req.body;
+    let messageInput: string | object;
 
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
+    // Check if the body contains a 'message' property (standard text query)
+    // or if it's a structured object (like CRM update)
+    if (req.body && typeof req.body.message === 'string') {
+      messageInput = req.body.message;
+      console.log(`Received text query for /api/ask: "${messageInput}" (Conversation ID: ${conversationId})`);
+    } else if (req.body && typeof req.body === 'object' && req.body.type === 'crm_update') {
+      // Assume the entire body is the structured message
+      messageInput = req.body;
+      console.log(`Received object query for /api/ask: Type=${(messageInput as any).type} (Conversation ID: ${conversationId})`);
+    } else {
+      // Handle unexpected format
+      console.warn('Received ask request with unexpected body format:', req.body);
+      return res.status(400).json({ error: 'Invalid message format. Expecting {message: string, ...} or {type: \'crm_update\', ...}.' });
     }
 
-    console.log(`Received query for /api/ask: "${message}"`);
+    // Call the Orchestrator handler with either the string or the object
+    const response = await handleUserQuery(messageInput, userEmail, conversationId);
 
-    // Call the Customer Support Agent handler
-    // Pass conversationHistory if available (though not used yet in the basic RAG)
-    const response = await handleCustomerSupport(message, userEmail, conversationHistory);
-
-    console.log(`Sending response from /api/ask:`, response);
+    console.log(`Sending response from /api/ask (Orchestrator):`, response);
     return res.status(200).json(response);
 
   } catch (error: any) {
     console.error('Error in /api/ask route:', error);
-    // Provide more detailed error response if possible
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     return res.status(500).json({ error: errorMessage });
   }

@@ -4,7 +4,7 @@ export type AgentType = 'orchestration' | 'customerSupport' | 'solarAssessment' 
 // Response types
 export interface AgentResponse {
   text: string;
-  type: 'text' | 'offer' | 'appointment' | 'assessment' | 'handoff';
+  type: 'text' | 'offer' | 'appointment' | 'assessment' | 'handoff' | 'confirmation';
   data?: any;
   confidence?: number;
   sources?: string[];
@@ -37,6 +37,7 @@ export interface Offer {
   financingOptions?: FinancingOption[];
   systemSize?: number;
   annualProduction?: number;
+  assessmentId?: string;
 }
 
 // Appointment type
@@ -45,12 +46,12 @@ export interface Appointment {
   timestamp: string;
   scheduledTime: string;
   userEmail: string;
+  status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed';
+  appointmentType: 'virtual' | 'in-person';
   address?: string;
   phoneNumber?: string;
   notes?: string;
-  appointmentType?: 'virtual' | 'in-person';
-  consultant?: string;
-  status?: 'scheduled' | 'confirmed' | 'completed' | 'cancelled';
+  appointmentReason?: string;
 }
 
 // Property Assessment type (new)
@@ -68,6 +69,8 @@ export interface PropertyAssessment {
   estimatedSystemSize?: number;
   estimatedProduction?: number;
   confidence: number;
+  energyUsage?: string;
+  conversationId?: string;
 }
 
 // User type (new)
@@ -91,6 +94,7 @@ export interface ConversationTurn {
   userQuery: string;
   agentResponse: string;
   agentType: AgentType;
+  conversationId: string;
 }
 
 // Financing option type (new)

@@ -1,7 +1,9 @@
-import { AgentResponse, ConversationTurn, PropertyAssessment } from '../models/types';
+import { AgentResponse, ConversationTurn, PropertyAssessment, AgentType } from '../models/types';
 import { solarAssessmentAgentPrompt } from './systemPrompts';
 import { OpenAI } from 'openai';
 import dotenv from 'dotenv';
+import { assessmentsContainer } from '../utils/cosmosClient';
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
 
@@ -15,6 +17,22 @@ const client = new OpenAI({
 
 // In-memory database for property assessments
 let assessments: PropertyAssessment[] = [];
+
+// Define a simple structure for the assessment record
+interface SolarAssessment {
+    id: string; // Unique ID for the assessment, used as partition key
+    assessmentId: string; // Partition Key value (same as id)
+    conversationId: string;
+    userEmail?: string; // Optional for now
+    timestamp: string;
+    status: 'pending' | 'in-progress' | 'complete';
+    address?: string;
+    energyUsage?: string; // e.g., kWh per year or monthly bill amount
+    notes?: string;
+}
+
+// Minimal state tracking for the assessment conversation (in-memory for now)
+const assessmentState: { [conversationId: string]: Partial<SolarAssessment> } = {};
 
 // Export assessments for admin dashboard
 export const getAllAssessments = (): PropertyAssessment[] => {
@@ -275,55 +293,82 @@ const checkForHandoff = (query: string): { needsHandoff: boolean, nextAgent?: st
   return { needsHandoff: false };
 };
 
+/**
+ * Handles user queries related to solar assessments.
+ * For now, it asks for address and energy usage, then saves a basic record.
+ */
 export const handleSolarAssessment = async (
-  message: string, 
-  userEmail?: string,
-  conversationHistory: ConversationTurn[] = []
+    message: string,
+    conversationId: string,
+    userEmail?: string // Optional user email
 ): Promise<AgentResponse> => {
-  // Check if the query suggests a handoff to another agent
-  const handoffCheck = checkForHandoff(message);
-  if (handoffCheck.needsHandoff && handoffCheck.nextAgent) {
-    return {
-      text: `I understand you're interested in ${handoffCheck.nextAgent === 'proposal' ? 'pricing information' : 'scheduling an appointment'}. Let me connect you with our ${handoffCheck.nextAgent === 'proposal' ? 'Proposal' : 'Customer Service'} team who can help you with that.`,
-      type: 'handoff',
-      nextAgent: handoffCheck.nextAgent as any,
-      confidence: 0.9
+
+    const state = assessmentState[conversationId] || { status: 'pending' };
+    assessmentState[conversationId] = state; // Ensure state is tracked
+
+    let responseText = '';
+    let nextAgent: AgentType | undefined = undefined;
+    let confidence = 0.8; // Higher confidence as it's a targeted flow
+
+    // Simple state machine
+    if (state.status === 'pending') {
+        // Ask for address first
+        responseText = "Okay, I can help start a solar assessment. To begin, could you please provide the full property address where the solar panels would be installed?";
+        state.status = 'in-progress';
+        state.notes = "Asked for address.";
+    } else if (state.status === 'in-progress' && !state.address) {
+        // Assume the message contains the address (basic parsing)
+        state.address = message; // Very simple assumption
+        responseText = `Got it. And approximately what is your average monthly electricity bill, or your annual usage in kWh? This helps estimate the system size.`;
+        state.notes = "Received address, asked for energy usage.";
+    } else if (state.status === 'in-progress' && state.address && !state.energyUsage) {
+        // Assume the message contains energy usage info
+        state.energyUsage = message; // Very simple assumption
+
+        // Save the basic assessment record to Cosmos DB
+        const assessmentId = uuidv4();
+        const assessmentRecord: SolarAssessment = {
+            id: assessmentId,
+            assessmentId: assessmentId, // Use ID as partition key
+            conversationId: conversationId,
+            userEmail: userEmail, // Include if available
+            timestamp: new Date().toISOString(),
+            status: 'complete', // Mark as complete for this minimal version
+            address: state.address,
+            energyUsage: state.energyUsage,
+            notes: "Initial assessment record created."
+        };
+
+        try {
+            await assessmentsContainer.items.create(assessmentRecord);
+            responseText = `Thanks! I've created an initial assessment record (ID: ${assessmentId}). A specialist may follow up if more details are needed. For now, is there anything else I can help with? Perhaps provide a proposal based on this?`;
+            // Suggest handoff to proposal agent
+            nextAgent = 'proposal';
+            // Clean up state for this conversation
+            delete assessmentState[conversationId];
+        } catch (error) {
+            console.error("Error saving assessment to Cosmos DB:", error);
+            responseText = "Sorry, I encountered an error trying to save the assessment information. Please try again later.";
+            state.status = 'pending'; // Reset state on error
+            confidence = 0.3;
+        }
+    } else {
+        // Fallback / unexpected state
+        responseText = "I seem to have lost track of our assessment conversation. Could you please provide the property address again?";
+        state.status = 'pending';
+        confidence = 0.5;
+    }
+
+    const response: AgentResponse = {
+        text: responseText,
+        type: 'text', // Could be 'assessment-update' later
+        confidence: confidence,
+        nextAgent: nextAgent,
+        data: { conversationId: conversationId } // Pass conversationId back
     };
-  }
-  
-  // Extract property information from current message
-  const currentInfo = extractPropertyInfo(message);
-  if (userEmail) {
-    currentInfo.userEmail = userEmail;
-  }
-  
-  // Combine with information from conversation history
-  const historyInfo = getPropertyInfoFromHistory(conversationHistory);
-  const combinedInfo = { ...historyInfo, ...currentInfo };
-  
-  // Check if we have enough information for an assessment
-  if (hasEnoughInformation(combinedInfo)) {
-    // Perform the assessment
-    const assessment = await analyzeProperty(combinedInfo, message);
-    
-    // Generate a response based on the assessment
-    const responseText = await generateAssessmentResponse(assessment, message);
-    
-    return {
-      text: responseText,
-      type: 'assessment',
-      data: assessment,
-      confidence: assessment.confidence
-    };
-  } else {
-    // Ask for missing information
-    const responseText = askForMissingInfo(combinedInfo);
-    
-    return {
-      text: responseText,
-      type: 'text',
-      data: combinedInfo,
-      confidence: 0.7
-    };
-  }
+
+    // Note: We are not explicitly adding this turn to the main 'conversations' log here.
+    // The orchestrator or a dedicated logging mechanism should handle that.
+
+    return response;
 }; 

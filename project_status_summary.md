@@ -97,53 +97,52 @@ The project leverages concepts from the "AI Agents for Beginners" course and pla
 
 You are assisting in the development of the DemoSolar AI Agent System. The core goal is to automate solar sales processes using a multi-agent architecture (Support, Assessment, Proposal, CRM Agents). We have successfully connected to Azure OpenAI. Key next steps involve building the agent framework, implementing individual agent logic using concepts like Agentic RAG, Tool Use, Planning, and Metacognition, and integrating core Azure services like AI Search, Cosmos DB, and Document Intelligence. Refer to `hackathon-tasks.md` for the detailed checklist and priorities. The knowledge from the "AI Agents for Beginners" course (`knowledge.md`) provides the theoretical foundation for these implementations. Focus on completing the Priority 1 (Agent Architecture) and Priority 2 (Azure Services Integration) tasks, including setting up the **foundational logging and basic RAG/DB integration** needed for potential future learning loops.
 
-## 6. Hackathon Sprint Plan & Progress (End of Day 1)
+## 6. Hackathon Sprint Plan & Progress (Update: Mid-Day 2 - Revised Focus v2)
 
-**Progress Day 1 (Actual):**
-- [x] **Azure Cosmos DB Setup:**
-  - [x] Created Database (`demosolar_db`) and Container (`conversations`).
-  - [x] Implemented `cosmosClient.ts` in `backend/src/utils`.
-  - [x] Secured Connection String using `.env` file.
-- [x] **Azure AI Search Setup:**
-  - [x] Created Search Service (`demosolar-ai-search`).
-  - [x] Implemented `searchClient.ts` in `backend/src/utils`.
-  - [x] Secured Endpoint & Admin Key using `.env` file.
-- [x] **Basic RAG Implementation:**
-  - [x] Defined Search Index (`demosolar-knowledgebase`) with fields (incl. vector prep).
-  - [x] Implemented `searchService.ts` with `ensureIndexExists` and `performKeywordSearch`.
-  - [x] Added index creation & sample data seeding on backend startup.
-  - [x] Modified `customerSupportAgent.ts` to use `performKeywordSearch` (replacing static FAQ/LLM matching).
-  - [x] Added score threshold (`SCORE_THRESHOLD = 1.5`) for relevance checking.
-  - [x] Integrated `handleCustomerSupport` into `/api/ask` route.
-- [ ] **OpenAI Integration:**
-  - [ ] Connected Azure OpenAI (done previously).
-  - [-] **Temporarily Disabled Fallback:** Commented out OpenAI client/calls in `customerSupportAgent.ts` due to persistent TS import errors (runtime confirmed working before commenting).
-- [ ] **Basis Logging:**
-  - [ ] Implement interaction logging to Cosmos DB.
-- [ ] **Agent Framework/Orchestration:**
-  - [ ] Implement basic Orchestrator Agent.
-- [ ] **Other Agents (Minimal):**
-  - [ ] Implement minimal Solar Assessment Agent (e.g., simple DB write).
-  - [ ] Implement minimal Proposal/CRM Agent stubs.
+**Progress So Far (Mid-Day 2):**
+- [x] **Azure Cosmos DB Setup:** (Database, `conversations`, `assessments`, `proposals` containers, `cosmosClient.ts`)
+- [x] **Azure AI Search Setup:** (Service, `searchClient.ts`, Index, Seeding)
+- [x] **Basic RAG Implementation:** (`customerSupportAgent` using keyword search, fallback via Orchestrator)
+- [x] **OpenAI Integration:** (Connected, used in Orchestrator, basic proposal generation, CRM lead scoring)
+- [x] **Basis Logging:** (Interactions logged to `conversations` container)
+- [x] **Agent Framework/Orchestration:** (Minimal orchestrator, agent determination, state/handoff handling)
+- [x] **Minimal Agents & Flow:**
+  - [x] `handleSolarAssessment` (stateful, writes to `assessments` container)
+  - [x] `handleProposal` (Basic generation, writes to `proposals` container)
+  - [x] `handleCRM` (Stub, `updateUserProfile` commented out)
+  - [x] End-to-end flow tested (Support -> Assess -> Proposal -> CRM Stubs)
+- [x] **Frontend Integration:** (`Chatbot.js` handles `conversationId`, basic proposal styling)
+- [x] **CRM Dashboard:** (Shows assessments from DB)
 
-**Plan Day 2 (Focus: Core Flow & Demo):**
-- [ ] **Core Functionality:**
-  - [ ] Implement **Basic Logging** to Cosmos DB within `handleCustomerSupport` (carry-over).
-  - [ ] Implement **Minimal Orchestrator:** Modify `/api/ask` to call `orchestrationAgent.ts`, which routes to `handleCustomerSupport` (and potentially others later).
-  - [ ] Implement **Minimal Solar Assessment Agent:** Create `handleSolarAssessment` that collects 1-2 data points (can be simulated/hardcoded questions for demo) and writes a basic record to a *new* Cosmos DB container (e.g., `assessments`). Add handoff logic in Orchestrator/SupportAgent.
-  - [ ] Implement **Minimal Proposal/CRM Agent Stubs:** Create handlers that return simple placeholder text (e.g., "Proposal generated", "Lead logged") to demonstrate the flow. Add handoff logic.
-- [ ] **End-to-End Flow:**
-  - [ ] Test and refine the flow: Inquiry -> Support (RAG) -> Handoff -> Assessment (DB Write) -> Handoff -> Proposal/CRM Stubs -> Logging.
+**Revised Plan Day 2 Rest/Day 3 (Focus: Core Functionality & Stability):**
+
+**Priority 1: Fix CRM & Implement Booking (Current Focus)**
+- [ ] **Fix CRM Agent Type Error:**
+    - [ ] Analyze `updateUserProfile` call in `crmAgent.ts` and `User` / `ConversationTurn` types in `types.ts`.
+    - [ ] Identify why `conversationHistory` causes a type mismatch (likely missing `conversationId` on turns created *within* `crmAgent`).
+    - [ ] Correct the creation/handling of `ConversationTurn` objects within `crmAgent` before passing to `updateUserProfile`.
+    - [ ] Re-enable the `updateUserProfile` call.
+- [ ] **Implement Basic Appointment Booking:**
+    - [ ] Activate intent detection for scheduling in `handleCRM`.
+    - [ ] Ensure `findAvailableSlots` and `createAppointment` functions work correctly.
+    - [ ] Create `appointments` container in Cosmos DB (**Action Needed by User**).
+    - [ ] Modify `createAppointment` to save to the new Cosmos DB container (replace in-memory array).
+    - [ ] Update `/api/crm/appointments` endpoint in `crmRoutes.ts` to read from Cosmos DB.
+    - [ ] Verify `CRMPage.js` Calendar/Appointments tab displays data correctly from API.
+
+**Priority 2: Core Value & Demo Readiness**
+- [ ] **Centralize Offer Data:** Update `/api/crm/offers` endpoint to read from the `proposals` container.
 - [ ] **Demo & Documentation (Crucial):**
-  - [ ] Prepare **Demo Script** highlighting multi-agent, RAG, Azure services, business value.
-  - [ ] **Record 3-min Demo Video**.
-  - [ ] Create/update **README.md** (setup, run instructions, architecture overview - maybe Mermaid diagram).
-  - [ ] Create simple **Architecture Diagram**.
-- [ ] **Nice-to-Haves (If Time):**
-  - [ ] **Fix OpenAI Import Issue:** Debug the `@azure/openai` import problem and re-enable the generative fallback in `customerSupportAgent`.
-  - [ ] Implement basic feedback logging (👍/👎 to Cosmos DB).
-  - [ ] Add **Vector Search:** Implement embedding generation (on seeding & query) and update search logic.
-  - [ ] Basic UI improvements (e.g., typing indicator).
-  - [ ] Simple Metacognition (e.g., OpenAI self-critique on RAG result).
+  - [ ] Prepare Demo Script.
+  - [ ] Record Demo Video.
+  - [ ] Create/update README.md & Architecture Diagram.
 
-**Key Goal for Day 2:** Have a demonstrable end-to-end multi-agent flow using RAG and Cosmos DB, even if some agents are stubs, supported by clear documentation and a compelling video.
+**Priority 3: Stability & Polish**
+- [ ] **Fix OpenAI Fallback in Support Agent:** Debug `@azure/openai` import issue, re-enable direct fallback.
+- [ ] **Implement Basic Feedback Logging:** Add UI buttons, backend endpoint, log to DB.
+- [ ] **Link Data in CRM:** Make `conversationId`/`userEmail` clickable.
+- [ ] **Improve Assessment Agent:** Parse initial message.
+- [ ] Add **Vector Search** to RAG.
+- [ ] UI improvements.
+
+**Key Goal for Day 2/3:** Deliver a compelling demo showcasing a multi-agent system that provides tangible value (assessment, proposal, *booking*), visible to both the user and the employee (via CRM dashboard), supported by solid documentation. Stabilize core functionality (CRM user updates).

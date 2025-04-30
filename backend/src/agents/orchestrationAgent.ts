@@ -4,23 +4,44 @@ import { handleCustomerSupport } from './customerSupportAgent';
 import { handleSolarAssessment } from './solarAssessmentAgent';
 import { handleProposal } from './proposalAgent';
 import { handleCRM } from './crmAgent';
-import { OpenAI } from '@azure/openai';
+import { AzureOpenAI } from "openai";
+import "@azure/openai/types";
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Initialize Azure OpenAI client
-const client = new OpenAI({
-  apiKey: process.env.AZURE_OPENAI_API_KEY || '',
-  endpoint: process.env.AZURE_OPENAI_ENDPOINT || '',
-  apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview'
+// --- Correct AzureOpenAI Client Initialization ---
+const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview'; // Use a recent API version
+
+// Endpoint and Key should be loaded from .env by dotenv
+if (!process.env.AZURE_OPENAI_ENDPOINT) {
+    throw new Error("Orchestrator: AZURE_OPENAI_ENDPOINT is not set in environment variables.");
+}
+if (!process.env.AZURE_OPENAI_API_KEY) {
+    throw new Error("Orchestrator: AZURE_OPENAI_API_KEY is not set in environment variables.");
+}
+if (!deployment) {
+    throw new Error("Orchestrator: AZURE_OPENAI_DEPLOYMENT is not set in environment variables.");
+}
+
+// Initialize the client using the correct class and options
+const client = new AzureOpenAI({
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+    apiKey: process.env.AZURE_OPENAI_API_KEY,
+    apiVersion: apiVersion,
+    // deployment is needed for the call, not necessarily here
 });
+
+console.log(`Orchestrator initialized AzureOpenAI client for deployment '${deployment}' and apiVersion '${apiVersion}'`);
 
 // Mock in-memory database for users and conversations
 // This would be replaced with Cosmos DB in production
 let users: Record<string, User> = {};
 let conversations: Record<string, ConversationTurn[]> = {};
 let crmDatabase: CRMEntry[] = [];
+// Add state for tracking expected next agent
+let conversationState: Record<string, { expectedNextAgent?: AgentType }> = {};
 
 // Export the CRM database for access in the admin dashboard
 export const getCRMEntries = (): CRMEntry[] => {
@@ -43,6 +64,14 @@ const getOrCreateUser = (email: string): User => {
 
 // Helper function to determine the agent type using Azure OpenAI
 const determineAgentType = async (message: string, conversationHistory: ConversationTurn[]): Promise<AgentType> => {
+  // This function *expects* a string message for analysis
+  // If an object is passed, we might need specific logic or default behavior
+  if (typeof message !== 'string') {
+    console.warn("determineAgentType received non-string message, defaulting to customerSupport");
+    // Consider extracting text or using a default logic if objects can be passed here
+    return 'customerSupport'; 
+  }
+
   try {
     // Format conversation history for context
     const historyContext = conversationHistory
@@ -54,14 +83,16 @@ const determineAgentType = async (message: string, conversationHistory: Conversa
     const systemMessage = orchestrationAgentPrompt;
     
     // Call Azure OpenAI to determine agent type
+    // Ensure client is initialized
+    if (!client) throw new Error("Orchestrator: OpenAI client is not initialized.");
     const response = await client.chat.completions.create({
-      model: process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o-mini',
+      model: deployment, // Use the deployment name from env
       messages: [
         { role: 'system', content: systemMessage },
         { role: 'user', content: `Based on the following conversation history and the current user message, determine which specialized agent should handle this query. Respond with just the agent type: orchestration, customerSupport, solarAssessment, proposal, or crm.\n\nHistory:\n${historyContext}\n\nCurrent message: ${message}` }
-      ],
+      ] as any, // Using 'as any' to bypass strict type checks for now, align with ChatCompletionMessageParam later if needed
       temperature: 0.3,
-      max_tokens: 50
+      max_tokens: 50 // Use snake_case
     });
     
     // Extract the agent type from the response
@@ -84,6 +115,11 @@ const determineAgentType = async (message: string, conversationHistory: Conversa
 
 // Fallback method using keywords if Azure OpenAI is unavailable
 const fallbackAgentTypeDetermination = (message: string): AgentType => {
+  // This also expects a string
+  if (typeof message !== 'string') {
+     console.warn("fallbackAgentTypeDetermination received non-string message, defaulting to customerSupport");
+     return 'customerSupport';
+  }
   const lowerMessage = message.toLowerCase();
   
   // Check if this is an appointment or CRM-related request
@@ -135,9 +171,9 @@ const fallbackAgentTypeDetermination = (message: string): AgentType => {
 
 // Store conversation history
 const storeConversation = (
-  userEmail: string, 
-  userQuery: string, 
-  agentResponse: AgentResponse, 
+  userEmail: string,
+  userQuery: string,
+  agentResponse: AgentResponse,
   agentType: AgentType,
   conversationId: string
 ): void => {
@@ -146,12 +182,13 @@ const storeConversation = (
     conversations[conversationId] = [];
   }
   
-  // Add to conversation history
+  // Add to conversation history, including conversationId
   const turn: ConversationTurn = {
     timestamp: new Date().toISOString(),
     userQuery,
     agentResponse: agentResponse.text,
-    agentType
+    agentType,
+    conversationId: conversationId
   };
   
   conversations[conversationId].push(turn);
@@ -178,6 +215,19 @@ const storeConversation = (
   };
   
   crmDatabase.push(crmEntry);
+
+  // Store the suggested next agent for the conversation state
+  if (agentResponse.nextAgent) {
+      if (!conversationState[conversationId]) {
+          conversationState[conversationId] = {};
+      }
+      conversationState[conversationId].expectedNextAgent = agentResponse.nextAgent;
+  } else {
+    // Clear expected agent if none is suggested
+    if (conversationState[conversationId]) {
+        delete conversationState[conversationId].expectedNextAgent;
+    }
+  }
 };
 
 // Get conversation history
@@ -186,7 +236,7 @@ const getConversationHistory = (conversationId: string): ConversationTurn[] => {
 };
 
 export const handleUserQuery = async (
-  message: string, 
+  messageInput: string | object, // Updated parameter type
   userEmail?: string, 
   conversationId?: string
 ): Promise<AgentResponse> => {
@@ -201,24 +251,57 @@ export const handleUserQuery = async (
     getOrCreateUser(userEmail);
   }
   
-  // Determine which agent should handle the request
-  const agentType = await determineAgentType(message, history);
-  
+  // --- Determine Agent --- 
+  let agentType: AgentType;
+  const state = conversationState[currentConversationId];
+
+  // Extract text message for agent determination, handle object messages later
+  const textMessageForDetermination = typeof messageInput === 'string' ? messageInput : null;
+
+  if (state?.expectedNextAgent) {
+      agentType = state.expectedNextAgent;
+      console.log(`Orchestrator: Using expected next agent '${agentType}' for conversation ${currentConversationId}`);
+      delete state.expectedNextAgent; 
+  } else if (textMessageForDetermination) {
+      // Determine agent based on text message and history
+      agentType = await determineAgentType(textMessageForDetermination, history);
+      console.log(`Orchestrator: Determined agent type '${agentType}' for conversation ${currentConversationId}`);
+  } else if (typeof messageInput === 'object' && (messageInput as any).type === 'crm_update') {
+      // If it's a CRM update object, route directly to CRM agent
+      agentType = 'crm';
+      console.log(`Orchestrator: Routing CRM update object directly to CRM agent for conversation ${currentConversationId}`);
+  } else {
+      // Fallback if message is neither string nor known object type
+      console.warn(`Orchestrator: Could not determine agent type for non-string input. Defaulting to customerSupport.`);
+      agentType = 'customerSupport';
+  }
+  // --- End Determine Agent --- 
+
   let response: AgentResponse;
   
-  // Route to the appropriate agent
+  // Route to the appropriate agent, passing the original messageInput
   switch (agentType) {
     case 'customerSupport':
-      response = await handleCustomerSupport(message, userEmail, history);
+      // handleCustomerSupport likely expects a string, handle potential object input
+      const supportMessage = typeof messageInput === 'string' ? messageInput : JSON.stringify(messageInput);
+      response = await handleCustomerSupport(supportMessage, userEmail, history);
       break;
     case 'solarAssessment':
-      response = await handleSolarAssessment(message, userEmail, history);
+      const assessmentUserId = userEmail || `anon_${currentConversationId}`;
+      // handleSolarAssessment likely expects a string
+      const assessmentMessage = typeof messageInput === 'string' ? messageInput : JSON.stringify(messageInput);
+      response = await handleSolarAssessment(assessmentMessage, currentConversationId, assessmentUserId);
       break;
     case 'proposal':
-      response = await handleProposal(message, userEmail, history);
+      const proposalUserId = userEmail || `anon_${currentConversationId}`;
+      // handleProposal likely expects a string
+      const proposalMessage = typeof messageInput === 'string' ? messageInput : JSON.stringify(messageInput);
+      response = await handleProposal(proposalMessage, currentConversationId, proposalUserId, history);
       break;
     case 'crm':
-      response = await handleCRM(message, userEmail, history);
+      const crmUserId = userEmail || `anon_${currentConversationId}`;
+      // handleCRM is designed to accept string | object
+      response = await handleCRM(currentConversationId, crmUserId, messageInput, history);
       break;
     default:
       response = {
@@ -228,8 +311,9 @@ export const handleUserQuery = async (
       };
   }
   
-  // Store conversation history
-  storeConversation(userEmail || 'anonymous', message, response, agentType, currentConversationId);
+  // Store conversation history - use original text message if possible for query field
+  const queryToStore = typeof messageInput === 'string' ? messageInput : `[CRM Update Action]`; // Placeholder for object actions
+  storeConversation(userEmail || 'anonymous', queryToStore, response, agentType, currentConversationId);
   
   // If another agent should handle the next turn, include that in the response
   if (response.nextAgent && response.nextAgent !== agentType) {

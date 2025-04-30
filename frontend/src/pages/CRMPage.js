@@ -8,6 +8,7 @@ function CRMPage() {
   const [offers, setOffers] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [entries, setEntries] = useState([]);
+  const [assessments, setAssessments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -16,15 +17,17 @@ function CRMPage() {
       setLoading(true);
       try {
         // Fetch all data in parallel
-        const [offersRes, appointmentsRes, entriesRes] = await Promise.all([
+        const [offersRes, appointmentsRes, entriesRes, assessmentsRes] = await Promise.all([
           axios.get('/api/crm/offers'),
           axios.get('/api/crm/appointments'),
-          axios.get('/api/crm/entries')
+          axios.get('/api/crm/entries'),
+          axios.get('/api/crm/assessments')
         ]);
         
         setOffers(offersRes.data);
         setAppointments(appointmentsRes.data);
         setEntries(entriesRes.data);
+        setAssessments(assessmentsRes.data);
         setError('');
       } catch (err) {
         console.error('Error fetching CRM data:', err);
@@ -49,9 +52,10 @@ function CRMPage() {
   };
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    // Format as Euro for NL context
+    return new Intl.NumberFormat('nl-NL', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'EUR'
     }).format(amount);
   };
 
@@ -103,6 +107,41 @@ function CRMPage() {
                       <td>{offer.solarPanelCount} panels</td>
                       <td>{formatCurrency(offer.estimatedCost)}</td>
                       <td>{formatCurrency(offer.estimatedSavings)}/year</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        );
+      
+      case 'assessments':
+        return (
+          <div className="assessments-table">
+            <h3>Recent Assessments ({assessments.length})</h3>
+            {assessments.length === 0 ? (
+              <p>No assessments recorded yet.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Email</th>
+                    <th>Address</th>
+                    <th>Energy Usage</th>
+                    <th>Status</th>
+                    <th>Conv. ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assessments.map(assessment => (
+                    <tr key={assessment.id}>
+                      <td>{formatDate(assessment.timestamp)}</td>
+                      <td>{assessment.userEmail || 'anonymous'}</td>
+                      <td>{assessment.address || 'Not provided'}</td>
+                      <td>{assessment.energyUsage || 'Not provided'}</td>
+                      <td>{assessment.status || '-'}</td>
+                      <td>{assessment.conversationId || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -202,6 +241,10 @@ function CRMPage() {
           <h3>{entries.length}</h3>
           <p>Total Interactions</p>
         </div>
+        <div className="stat-card">
+          <h3>{assessments.length}</h3>
+          <p>Assessments</p>
+        </div>
       </div>
       
       <div className="tabs">
@@ -216,6 +259,12 @@ function CRMPage() {
           onClick={() => setActiveTab('offers')}
         >
           Quotes
+        </button>
+        <button 
+          className={`tab-button ${activeTab === 'assessments' ? 'active' : ''}`}
+          onClick={() => setActiveTab('assessments')}
+        >
+          Assessments
         </button>
         <button 
           className={`tab-button ${activeTab === 'appointments' ? 'active' : ''}`}

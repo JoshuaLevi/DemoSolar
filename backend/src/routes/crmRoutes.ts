@@ -1,7 +1,8 @@
 import express from 'express';
 import { getCRMEntries } from '../agents/mainAgent';
 import { getAllOffers } from '../agents/offerAgent';
-import { getAllAppointments, addCalendarAppointment, getAvailableTimeSlotsForDate } from '../agents/intakeAgent';
+import { addCalendarAppointment, getAvailableTimeSlotsForDate } from '../agents/intakeAgent';
+import { assessmentsContainer, appointmentsContainer } from '../utils/cosmosClient';
 
 const router = express.Router();
 
@@ -20,6 +21,7 @@ router.get('/entries', (req, res) => {
 router.get('/offers', (req, res) => {
   try {
     const offers = getAllOffers();
+    console.warn("/api/crm/offers endpoint is potentially using in-memory data.");
     return res.status(200).json(offers);
   } catch (error) {
     console.error('Error fetching offers:', error);
@@ -27,14 +29,25 @@ router.get('/offers', (req, res) => {
   }
 });
 
-// Get all appointments
-router.get('/appointments', (req, res) => {
+// Get all assessments
+router.get('/assessments', async (req, res) => {
   try {
-    const appointments = getAllAppointments();
-    return res.status(200).json(appointments);
+    const { resources: assessmentItems } = await assessmentsContainer.items.readAll().fetchAll();
+    return res.status(200).json(assessmentItems);
+  } catch (error) {
+    console.error('Error fetching assessments:', error);
+    return res.status(500).json({ error: 'Internal server error fetching assessments' });
+  }
+});
+
+// Get all appointments
+router.get('/appointments', async (req, res) => {
+  try {
+    const { resources: appointmentItems } = await appointmentsContainer.items.readAll().fetchAll();
+    return res.status(200).json(appointmentItems);
   } catch (error) {
     console.error('Error fetching appointments:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error fetching appointments' });
   }
 });
 
