@@ -221,7 +221,114 @@
   text-align: left;
   background-color: #f0f9ff;
   border-left: 3px solid #1a5276;
-  padding: 5px 0;
+  padding: 5px 12px;
+}
+
+/* Assessment message styling */
+.assessment-message {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  background-color: #f5f9ff;
+  border-left: 3px solid #1a5276;
+  padding: 12px 15px;
+  line-height: 1.5;
+}
+
+.assessment-message h3 {
+  font-size: 16px;
+  margin: 15px 0 10px 0;
+  color: #1a5276;
+  font-weight: 600;
+}
+
+.assessment-message h4 {
+  font-size: 14px;
+  margin: 12px 0 8px 0;
+  color: #2980b9;
+  font-weight: 600;
+}
+
+.assessment-message p {
+  margin: 8px 0;
+}
+
+.assessment-message ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.assessment-message li {
+  margin-bottom: 6px;
+}
+
+.assessment-plan {
+  margin: 15px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-left: 4px solid;
+  transition: all 0.3s ease;
+}
+
+.assessment-plan:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.assessment-plan.basic {
+  border-left-color: #3498db;
+}
+
+.assessment-plan.standard {
+  border-left-color: #2ecc71;
+}
+
+.assessment-plan.premium {
+  border-left-color: #f39c12;
+}
+
+.assessment-plan.purchase {
+  border-left-color: #3498db;
+}
+
+.assessment-plan.loan {
+  border-left-color: #2ecc71;
+}
+
+.assessment-plan.lease {
+  border-left-color: #f39c12;
+}
+
+.assessment-plan.system-details {
+  border-left-color: #1a5276;
+}
+
+.assessment-plan.environmental-impact {
+  border-left-color: #27ae60;
+}
+
+.assessment-plan h4 {
+  font-size: 15px;
+  margin: 0 0 8px 0;
+  color: #333;
+}
+
+.assessment-plan-detail {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.assessment-plan-detail .label {
+  font-weight: 500;
+  color: #555;
+}
+
+.assessment-plan-detail .value {
+  font-weight: 600;
 }
 
 .offer-message h3, .offer-message h4 {
@@ -577,4 +684,76 @@
   border-color: #3498db;
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
   outline: none;
+}
+
+/* Combined class for shared styling */
+.assessment-message.offer-message {
+  text-align: left;
+}
+
+.assessment-message.offer-message p {
+  color: #333;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 10px 0;
+}
+
+.proposal-message {
+  background-color: #f8fbff;
+  border-radius: 12px;
+  padding: 15px;
+  margin-bottom: 20px;
+  border-left: 5px solid #1a5276;
+}
+
+.proposal-message .proposal-title {
+  text-align: center;
+  color: #1a5276;
+  font-weight: 700;
+  margin-bottom: 15px;
+  font-size: 1.3em;
+  border-bottom: 2px solid rgba(26, 82, 118, 0.2);
+  padding-bottom: 10px;
+}
+
+.proposal-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin: 15px 0;
+}
+
+.financing-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: rgba(26, 82, 118, 0.05);
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.financing-options > h4 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: #1a5276;
+  text-align: center;
+  font-weight: 600;
+}
+
+.proposal-note {
+  font-size: 13px;
+  color: #555;
+  margin: 15px 0 5px 0;
+  padding: 8px;
+  background-color: rgba(255, 252, 214, 0.3);
+  border-radius: 6px;
+  border-left: 3px solid #f39c12;
+}
+
+.proposal-question {
+  font-weight: 500;
+  color: #333;
+  margin: 10px 0 0 0;
+  text-align: center;
+  font-size: 15px;
 } 

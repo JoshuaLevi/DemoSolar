@@ -303,4 +303,18 @@ tr:hover {
   .crm-header p {
     font-size: 1rem;
   }
+}
+
+.proposal-badge {
+  background-color: #e6f7ff;
+  color: #0077cc;
+  border: 1px solid #5ab9fe;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.85em;
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
 } 

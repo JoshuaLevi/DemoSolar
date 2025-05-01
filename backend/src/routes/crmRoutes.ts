@@ -42,11 +42,29 @@ router.get('/assessments', async (req, res) => {
 // Get all appointments
 router.get('/appointments', async (req, res) => {
   try {
-    const { resources: appointmentItems } = await appointmentsContainer.items.readAll().fetchAll();
-    return res.status(200).json(appointmentItems);
+    const querySpec = {
+      query: "SELECT * FROM c ORDER BY c.scheduledTime DESC"
+    };
+    
+    const { resources: appointments } = await appointmentsContainer.items.query(querySpec).fetchAll();
+    
+    // Verrijk de appointments met proposal info waar beschikbaar
+    const enrichedAppointments = appointments.map(appointment => {
+      return {
+        ...appointment,
+        // Voeg een proposal indicator toe voor de frontend
+        hasProposal: !!appointment.proposalData,
+        // Voeg een samenvatting toe van de proposal, indien beschikbaar
+        proposalSummary: appointment.proposalData ? 
+          `${appointment.proposalData.systemSize}kW - €${appointment.proposalData.estimatedCost.toLocaleString('en-US')}` : 
+          undefined
+      };
+    });
+    
+    res.json(enrichedAppointments);
   } catch (error) {
-    console.error('Error fetching appointments:', error);
-    return res.status(500).json({ error: 'Internal server error fetching appointments' });
+    console.error('Error getting appointments:', error);
+    res.status(500).json({ error: 'Failed to retrieve appointments' });
   }
 });
 
@@ -68,23 +86,24 @@ router.get('/available-slots', (req, res) => {
 });
 
 // Add a new appointment from the calendar
-router.post('/appointments', (req, res) => {
+router.post('/appointments', async (req, res) => {
   try {
-    const { title, start, end, customer, phone, notes, type } = req.body;
+    const { title, start, end, customer, phone, notes, type, conversationId } = req.body;
     
     if (!start || !customer) {
       return res.status(400).json({ error: 'Start time and customer email are required' });
     }
     
     // Convert to format expected by intake agent
-    const appointment = addCalendarAppointment({
+    const appointment = await addCalendarAppointment({
       title,
       scheduledTime: new Date(start).toISOString(),
       endTime: new Date(end).toISOString(),
       userEmail: customer,
       phoneNumber: phone,
       notes,
-      appointmentType: type || 'virtual'
+      appointmentType: type || 'virtual',
+      conversationId: conversationId || undefined
     });
     
     return res.status(201).json(appointment);

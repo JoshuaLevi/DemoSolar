@@ -173,4 +173,26 @@
     flex-direction: column;
     gap: 8px;
   }
+}
+
+.proposal-section {
+  margin-top: 1.5rem;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  border-left: 4px solid #28a745;
+}
+
+.proposal-section h4 {
+  margin-top: 0;
+  color: #28a745;
+  font-size: 1.1rem;
+}
+
+.proposal-details {
+  margin-top: 0.5rem;
+}
+
+.proposal-details p {
+  margin: 0.5rem 0;
 } 

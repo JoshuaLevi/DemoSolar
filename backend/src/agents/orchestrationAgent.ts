@@ -16,7 +16,7 @@ dotenv.config();
 
 // --- Correct AzureOpenAI Client Initialization ---
 const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
-const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview'; // Use a recent API version
+const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-04-01-preview';
 
 // Endpoint and Key should be loaded from .env by dotenv
 if (!process.env.AZURE_OPENAI_ENDPOINT) {

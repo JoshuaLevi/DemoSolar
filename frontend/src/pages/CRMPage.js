@@ -211,6 +211,7 @@ function CRMPage() {
                     <th>Customer</th>
                     <th>Address</th>
                     <th>Phone</th>
+                    <th>Proposal</th>
                     <th>Created On</th>
                   </tr>
                 </thead>
@@ -221,6 +222,18 @@ function CRMPage() {
                       <td>{appointment.userEmail}</td>
                       <td>{appointment.address || 'Not provided'}</td>
                       <td>{appointment.phoneNumber || 'Not provided'}</td>
+                      <td>
+                        {appointment.hasProposal || appointment.proposalData ? (
+                          <div className="proposal-badge">
+                            {appointment.proposalSummary || 
+                             (appointment.proposalData ? 
+                              `${appointment.proposalData.systemSize}kW - €${appointment.proposalData.estimatedCost?.toLocaleString('en-US') || 'N/A'}` : 
+                              'Has Proposal')}
+                          </div>
+                        ) : (
+                          'None'
+                        )}
+                      </td>
                       <td>{formatDate(appointment.timestamp)}</td>
                     </tr>
                   ))}

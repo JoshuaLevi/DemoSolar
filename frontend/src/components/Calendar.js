@@ -56,16 +56,28 @@ function AppointmentCalendar({ aiAppointments = [] }) {
   // Combine dummy appointments with AI-generated ones
   const [events, setEvents] = useState([
     ...dummyAppointments,
-    ...aiAppointments.map((apt, index) => ({
-      id: `ai-${apt.id || index}`,
-      title: `AI Appointment - ${apt.userEmail}`,
-      start: new Date(apt.scheduledTime),
-      end: new Date(new Date(apt.scheduledTime).getTime() + 60 * 60 * 1000), // 1 hour duration
-      type: apt.appointmentType || 'virtual',
-      customer: apt.userEmail,
-      phone: apt.phoneNumber || 'Not provided',
-      notes: apt.notes || 'Scheduled by AI assistant'
-    }))
+    ...aiAppointments.map((apt, index) => {
+      // Create a more descriptive title based on appointment details
+      let title = `${apt.appointmentType || 'Virtual'} - ${apt.userEmail}`;
+      
+      // Add proposal indicator to title if it has one
+      if (apt.proposalData) {
+        title = `📄 ${title} (${apt.proposalData.systemSize}kW)`;
+      }
+      
+      return {
+        id: `ai-${apt.id || index}`,
+        title: title,
+        start: new Date(apt.scheduledTime),
+        end: new Date(new Date(apt.scheduledTime).getTime() + 60 * 60 * 1000), // 1 hour duration
+        type: apt.appointmentType || 'virtual',
+        customer: apt.userEmail,
+        phone: apt.phoneNumber || 'Not provided',
+        notes: apt.notes || 'Scheduled by AI assistant',
+        proposalData: apt.proposalData, // Add proposal data to event
+        hasProposal: !!apt.proposalData // Flag to indicate if this appointment has a proposal
+      };
+    })
   ]);
   
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -77,7 +89,9 @@ function AppointmentCalendar({ aiAppointments = [] }) {
     type: 'virtual',
     customer: '',
     phone: '',
-    notes: ''
+    notes: '',
+    proposalData: null,
+    hasProposal: false
   });
   const [modalMode, setModalMode] = useState('view'); // 'view', 'edit', 'add'
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -133,7 +147,9 @@ function AppointmentCalendar({ aiAppointments = [] }) {
       type: 'virtual',
       customer: '',
       phone: '',
-      notes: ''
+      notes: '',
+      proposalData: null,
+      hasProposal: false
     });
     fetchAvailableSlots(start);
     setModalMode('add');
@@ -193,7 +209,9 @@ function AppointmentCalendar({ aiAppointments = [] }) {
           customer: formData.customer,
           phone: formData.phone,
           notes: formData.notes,
-          type: formData.type
+          type: formData.type,
+          proposalData: formData.proposalData,
+          hasProposal: formData.hasProposal
         };
         
         // Save to backend
@@ -217,7 +235,9 @@ function AppointmentCalendar({ aiAppointments = [] }) {
             customer: formData.customer,
             phone: formData.phone,
             notes: formData.notes,
-            type: formData.type
+            type: formData.type,
+            proposalData: formData.proposalData,
+            hasProposal: formData.hasProposal
           });
         }
         
@@ -285,6 +305,19 @@ function AppointmentCalendar({ aiAppointments = [] }) {
           <p><strong>Customer:</strong> {formData.customer}</p>
           <p><strong>Phone:</strong> {formData.phone}</p>
           <p><strong>Notes:</strong> {formData.notes}</p>
+          
+          {formData.hasProposal && formData.proposalData && (
+            <div className="proposal-section">
+              <h4>Attached Solar Proposal</h4>
+              <div className="proposal-details">
+                <p><strong>System Size:</strong> {formData.proposalData.systemSize}kW</p>
+                <p><strong>Panels:</strong> {formData.proposalData.panelCount} panels</p>
+                <p><strong>Annual Production:</strong> {formData.proposalData.annualProduction?.toLocaleString()} kWh</p>
+                <p><strong>Estimated Cost:</strong> €{formData.proposalData.estimatedCost?.toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+          
           <div className="button-group">
             <button type="button" onClick={handleEditMode} className="edit-button">Edit</button>
             <button type="button" onClick={handleDeleteEvent} className="delete-button">Delete</button>

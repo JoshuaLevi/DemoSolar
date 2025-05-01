@@ -39,20 +39,30 @@ export interface Offer {
   systemSize?: number;
   annualProduction?: number;
   assessmentId?: string;
+  conversationId?: string;
 }
 
 // Appointment type
 export interface Appointment {
   id: string;
   timestamp: string;
-  scheduledTime: string;
   userEmail: string;
+  conversationId: string;
   status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed';
   appointmentType: 'virtual' | 'in-person';
+  scheduledTime: string;
   address?: string;
   phoneNumber?: string;
   notes?: string;
   appointmentReason?: string;
+  proposalData?: {
+    id: string;
+    systemSize: number;
+    panelCount: number;
+    annualProduction: number;
+    estimatedCost: number;
+    financingOptions?: any[];
+  };
 }
 
 // Property Assessment type (new)

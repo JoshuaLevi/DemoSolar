@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { appointmentsContainer } from '../utils/cosmosClient';
 import { addMinutes, format, parseISO } from 'date-fns';
 import { enUS } from 'date-fns/locale'; // Import English locale
+import { getAllOffers } from './proposalAgent';
+import { proposalsContainer } from '../utils/cosmosClient';
 
 // Make sure to load environment variables from the root .env file
 dotenv.config({ path: process.env.NODE_ENV === 'production' ? '.env' : '.env.local' });
@@ -312,14 +314,38 @@ const extractContactInfo = (message: string): {
   return info;
 };
 
+// Functie om de laatste proposal voor een conversatie op te halen
+const getLatestProposalForConversation = async (conversationId: string) => {
+  try {
+    const querySpec = {
+      query: "SELECT TOP 1 * FROM c WHERE c.conversationId = @conversationId ORDER BY c.timestamp DESC",
+      parameters: [
+        { name: "@conversationId", value: conversationId }
+      ]
+    };
+    
+    const { resources: proposals } = await proposalsContainer.items.query(querySpec).fetchAll();
+    return proposals.length > 0 ? proposals[0] : null;
+  } catch (error) {
+    console.error("Error fetching proposal for conversation:", error);
+    return null;
+  }
+};
+
 // Create a new appointment (Saves to DB)
 const createAppointment = async (
   userEmail: string, 
   scheduledTime: string, 
-  contactInfo: { address?: string; phoneNumber?: string; name?: string; appointmentReason?: string; },
-  appointmentType: 'virtual' | 'in-person'
+  contactInfo: { 
+    address?: string; 
+    phoneNumber?: string; 
+    name?: string; 
+    appointmentReason?: string; 
+  },
+  appointmentType: 'virtual' | 'in-person',
+  conversationId: string
 ): Promise<Appointment> => {
-  const appointmentId = uuidv4(); 
+  const appointmentId = uuidv4();
   
   // Format the appointment reason if it's just a number
   let formattedReason = contactInfo.appointmentReason || 'Not specified';
@@ -331,36 +357,52 @@ const createAppointment = async (
     formattedReason = 'Maintenance or repair discussion';
   }
   
+  // Ophalen van de meest recente proposal voor deze conversatie
+  const latestProposal = await getLatestProposalForConversation(conversationId);
+  
   const appointment: Appointment = {
     id: appointmentId,
     timestamp: new Date().toISOString(),
     scheduledTime: scheduledTime,
     userEmail: userEmail,
+    conversationId,
     status: 'scheduled',
     appointmentType: appointmentType,
     address: contactInfo.address,
     phoneNumber: contactInfo.phoneNumber,
     notes: `Customer name: ${contactInfo.name || 'Not provided'}\nReason: ${formattedReason}`,
-    appointmentReason: formattedReason // Save the formatted reason here
+    appointmentReason: formattedReason
   };
+  
+  // Koppelen van proposal data als deze beschikbaar is
+  if (latestProposal) {
+    appointment.proposalData = {
+      id: latestProposal.id,
+      systemSize: latestProposal.systemSize,
+      panelCount: latestProposal.solarPanelCount,
+      annualProduction: latestProposal.annualProduction,
+      estimatedCost: latestProposal.estimatedCost,
+      financingOptions: latestProposal.financingOptions
+    };
+  }
   
   // Save to Cosmos DB
   try {
     await appointmentsContainer.items.create(appointment);
-    console.log(`Appointment ${appointment.id} saved to Cosmos DB.`);
+    console.log(`Appointment ${appointmentId} saved to Cosmos DB. Proposal data: ${latestProposal?.id || 'none'}`);
   } catch (error) {
-      console.error(`Error saving appointment ${appointment.id} to Cosmos DB:`, error);
-      throw new Error("Failed to save appointment to database."); 
+    console.error(`Error saving appointment ${appointmentId} to Cosmos DB:`, error);
+    throw new Error("Failed to save appointment to database."); 
   }
   
   // Update user profile with appointment ID (uses in-memory 'users')
   const user = users[userEmail]; 
   if (user) {
   updateUserProfile(userEmail, { 
-          leadScore: (user.leadScore || 0) + 30,
-          leadStatus: 'proposal', 
-          appointments: [...(user.appointments || []), appointmentId]
-      });
+      leadScore: (user.leadScore || 0) + 30,
+      leadStatus: 'proposal', 
+      appointments: [...(user.appointments || []), appointmentId]
+    });
   }
   
   return appointment;
@@ -403,18 +445,34 @@ const updateAppointment = async (
 
 // Format a response for appointment booking (English)
 const formatAppointmentResponse = (appointment: Appointment): string => {
-  return `
+  let responseText = `
 Great! I've scheduled your ${appointment.appointmentType === 'in-person' ? 'In-Person Consultation' : 'Virtual Consultation'} appointment for ${formatAppointmentTime(appointment.scheduledTime)}.
 
-Appointment Details:
-- Type: ${appointment.appointmentType === 'in-person' ? 'In-Person Consultation' : 'Virtual Consultation'} (${appointment.status})
-${appointment.address ? `- Location: ${appointment.address}` : ''}
-${appointment.phoneNumber && appointment.phoneNumber !== 'Not provided' ? `- Contact Number: ${appointment.phoneNumber}` : ''}
-
-We'll contact you via ${appointment.userEmail}${appointment.phoneNumber && appointment.phoneNumber !== 'Not provided' ? ` or ${appointment.phoneNumber}` : ''} before the appointment.
+Here are your appointment details:
+${appointment.appointmentType === 'in-person' ? 
+  `- Location: Our office ${appointment.address ? `at ${appointment.address}` : ''}` : 
+  '- Virtual Meeting: A link will be emailed to you before the appointment'}
+- Phone: ${appointment.phoneNumber || 'Not provided'}
+- Reason: ${appointment.appointmentReason || 'Solar consultation'}
 
 If you need to reschedule or cancel, simply let me know. Is there anything else you'd like to know?
   `.trim();
+
+  // Als de appointment een proposal heeft, voeg deze informatie toe aan de response
+  if (appointment.proposalData) {
+    responseText += `
+
+I've attached your solar proposal to this appointment, so our consultant will be prepared to discuss your specific solar solution:
+- System Size: ${appointment.proposalData.systemSize} kWp
+- Panel Count: ${appointment.proposalData.panelCount} panels
+- Annual Production: ${appointment.proposalData.annualProduction.toLocaleString()} kWh
+- Estimated Cost: €${appointment.proposalData.estimatedCost.toLocaleString()}
+
+Our consultant will have all these details ready during your appointment.
+    `.trim();
+  }
+
+  return responseText;
 };
 
 // Check if query suggests a handoff to another agent
@@ -608,10 +666,11 @@ async function attemptBooking(state: CrmBookingState, userId: string): Promise<{
     if (availableSlots.includes(state.selectedSlot)) { // Check if slot is still valid theoretically
         try {
             const appointment = await createAppointment(
-                userId, // Use userId passed into the function
+                userId || 'anonymous', // Gebruik 'anonymous' als userId undefined is
                 state.selectedSlot,
                 contactInfoForBooking,
-                state.consultationType
+                state.consultationType,
+                state.conversationId
             );
             // No need to delete state here, let the main handler do it
             return {

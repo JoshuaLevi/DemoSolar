@@ -12,14 +12,25 @@ dotenv.config();
 let offers: Offer[] = [];
 
 // Export offers for the CRM dashboard
-export const getAllOffers = (): Offer[] => {
-  return offers;
+export const getAllOffers = async (): Promise<Offer[]> => {
+  try {
+    const querySpec = {
+      query: "SELECT * FROM c ORDER BY c.timestamp DESC"
+    };
+    
+    const { resources: proposals } = await proposalsContainer.items.query<Offer>(querySpec).fetchAll();
+    console.log(`Found ${proposals.length} proposals in the database`);
+    return proposals;
+  } catch (error) {
+    console.error('Error fetching proposals from Cosmos DB:', error);
+    return [];
+  }
 };
 
 // Constants for calculations (NL Context)
 const COST_PER_WATT = 1.5; // €1.50 per watt installed (Assumption)
 const PANEL_WATTAGE = 400; // 400W per panel
-const FEDERAL_TAX_CREDIT = 0.0; // Geen directe landelijke tax credit zoals in US; BTW teruggave apart.
+const FEDERAL_TAX_CREDIT = 0.0; // No direct national tax credit like in US; VAT refund is handled separately.
 const PANELS_PER_KW = 1000 / PANEL_WATTAGE; 
 const AVG_ELECTRICITY_RATE = 0.30; // €0.30 per kWh (Assumption)
 
@@ -133,7 +144,7 @@ const extractFinancingPreference = (message: string): string | null => {
 // Calculate system cost based on size
 const calculateSystemCost = (systemSizeKW: number): number => {
   const baseCost = systemSizeKW * 1000 * COST_PER_WATT;
-  // Note: BTW teruggave is complex, laten we buiten beschouwing voor nu.
+  // Note: VAT refund is complex, let's exclude it from consideration for now.
   return Math.round(baseCost); 
 };
 
@@ -147,13 +158,13 @@ const calculateMonthlySavings = (annualProduction: number): number => {
 const generateFinancingOptions = (systemCost: number): FinancingOption[] => {
   const options: FinancingOption[] = [];
   
-  // Cash option (apply BTW estimate? No, keep it simple)
+  // Cash option (apply VAT estimate? No, keep it simple)
   options.push({
     type: 'cash',
     totalCost: systemCost // Total cost without complex tax adjustments
   });
   
-  // Loan option - e.g., Energiebespaarlening (Simplified Example)
+  // Loan option - e.g., Green Energy Loan (Simplified Example)
   const loanAmount = systemCost;
   const interestRateLoan = 0.04; // Example rate 4%
   const termYearsLoan = 10;
@@ -233,38 +244,65 @@ const verifyCalculations = (
 
 // Format the proposal response (NL Currency)
 const formatProposalResponse = (offer: Offer): string => {
+  // Format currency values consistently
+  const formatEuro = (amount?: number) => amount?.toLocaleString('en-US', { style: 'currency', currency: 'EUR' }) || 'N/A';
+  
   // Format financing options
-  const financingText = offer.financingOptions?.map(option => {
-    const formatEuro = (amount?: number) => amount?.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' }) || 'N/A';
-    
-    if (option.type === 'cash') {
-      return `**Koop:**\n- Totale Kosten: ${formatEuro(option.totalCost)}\n- Geschatte Terugverdientijd: ~${Math.round((option.totalCost || 0) / ((offer.estimatedSavings || 1) / 12))} maanden`;
-    } else if (option.type === 'loan') {
-      return `**Lening (${option.termYears} jaar):**\n- Maandelijkse Betaling: ${formatEuro(option.monthlyPayment)}\n- Rentepercentage: ${(option.interestRate || 0) * 100}%\n- Netto Maandelijkse Kosten/Besparing: ${formatEuro(((offer.estimatedSavings || 0) / 12) - (option.monthlyPayment || 0))}`;
-    } else if (option.type === 'lease') {
-      return `**Lease (${option.termYears} jaar):**\n- Maandelijkse Betaling: ${formatEuro(option.monthlyPayment)}\n- Geen aanbetaling\n- Geschatte Netto Besparing: ${formatEuro(((offer.estimatedSavings || 0) / 12) - (option.monthlyPayment || 0))} per maand`;
+  const formatFinancingOptions = () => {
+    if (!offer.financingOptions || offer.financingOptions.length === 0) {
+      return '';
     }
-    return ''; // Should not happen
-  }).join('\n\n');
+    
+    const options = [];
+    
+    // Process each option in a consistent format
+    for (const option of offer.financingOptions) {
+      if (option.type === 'cash') {
+        options.push(`
+**Purchase Option:**
+- Total Cost: ${formatEuro(option.totalCost)}
+- Estimated Payback Period: ~${Math.round((option.totalCost || 0) / ((offer.estimatedSavings || 1) / 12))} months`);
+      } 
+      else if (option.type === 'loan') {
+        options.push(`
+**Loan Option (${option.termYears} years):**
+- Monthly Payment: ${formatEuro(option.monthlyPayment)}
+- Interest Rate: ${(option.interestRate || 0) * 100}%
+- Net Monthly Cost/Savings: ${formatEuro(((offer.estimatedSavings || 0) / 12) - (option.monthlyPayment || 0))}`);
+      } 
+      else if (option.type === 'lease') {
+        options.push(`
+**Lease Option (${option.termYears} years):**
+- Monthly Payment: ${formatEuro(option.monthlyPayment)}
+- No down payment
+- Estimated Net Savings: ${formatEuro(((offer.estimatedSavings || 0) / 12) - (option.monthlyPayment || 0))} per month`);
+      }
+    }
+    
+    return options.join('\n\n');
+  };
 
-  const formatEuroSavings = (amount?: number) => amount?.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' }) || 'N/A';
-
+  // Format the main content with clear section headers and consistent structure
   return `
-## Indicatief Voorstel Zonnepanelen
+# Solar System Proposal
 
-Op basis van de verstrekte gegevens, hier is een indicatief voorstel:
+Based on the information you've provided, here is your personalized solar proposal:
 
-### Systeem Details
-- Geschatte Systeemgrootte: ${offer.systemSize} kWp (${Math.round((offer.systemSize || 0) * PANELS_PER_KW)} panelen)
-- Geschatte Jaarproductie: ${offer.annualProduction?.toLocaleString('nl-NL')} kWh
-- Geschatte Jaarlijkse Besparing: ${formatEuroSavings(offer.estimatedSavings)}
-- Geschatte Installatietijd: ${offer.estimatedInstallationTime}
+### System Details
+- Estimated System Size: ${offer.systemSize} kWp (${Math.round((offer.systemSize || 0) * PANELS_PER_KW)} panels)
+- Estimated Annual Production: ${offer.annualProduction?.toLocaleString('en-US')} kWh
+- Estimated Annual Savings: ${formatEuro(offer.estimatedSavings)}
+- Estimated Installation Time: ${offer.estimatedInstallationTime}
 
-### Financieringsopties
-${financingText}
+### Financing Options
+${formatFinancingOptions()}
 
-Let op: Dit is een indicatie. Voor een definitieve offerte is een inspectie nodig.
-Wilt u doorgaan of de parameters aanpassen?
+### Environmental Impact
+- CO2 Emissions Avoided: ${Math.round((offer.annualProduction || 0) * 0.4)} kg per year
+- Equivalent to Planting: ${Math.round((offer.annualProduction || 0) * 0.02)} trees
+
+Note: This is an indication. An inspection is required for a final quote.
+Would you like to proceed with one of these options or discuss alternatives?
 `.trim();
 };
 
@@ -272,30 +310,44 @@ Wilt u doorgaan of de parameters aanpassen?
 const generateProposal = async (
   assessment: PropertyAssessment | null, 
   userEmail: string | undefined,
-  message: string
+  message: string,
+  conversationId?: string
 ): Promise<Offer> => {
-  // Default values
-  let systemSizeKW = 7; // Default 7kW
-  let annualProduction = 10000; // Default 10,000 kWh
-
-  // Try to estimate based on assessment energy usage
-  const parsedUsage = parseEnergyUsage(assessment?.energyUsage);
-  if (parsedUsage.annualKWh) {
-    // Estimate size based on annual kWh (e.g., assume 1300 kWh/kWp/year)
-    annualProduction = parsedUsage.annualKWh;
-    systemSizeKW = Math.round((annualProduction / 1300) * 10) / 10; // Round to 1 decimal
-  } else if (parsedUsage.monthlyBill) {
-    // Estimate annual kWh based on monthly bill and avg rate
-    annualProduction = Math.round((parsedUsage.monthlyBill / AVG_ELECTRICITY_RATE) * 12);
-    systemSizeKW = Math.round((annualProduction / 1300) * 10) / 10; // Round to 1 decimal
-  }
-
-  // Check which plan was selected
-  const planMatch = message.match(/Selected plan: (basic|standard|premium)/i);
-  if (planMatch && planMatch[1]) {
-    const selectedPlan = planMatch[1].toLowerCase();
+  // Define constants
+  const AVG_HOME_USAGE_KWH = 4000; // Annual kWh usage for average home
+  const AVG_MONTHLY_BILL = 150; // Average monthly bill in euros
+  const PANEL_WATTAGE = 400; // Each panel produces 400W
+  const PANELS_PER_KW = 1000 / PANEL_WATTAGE; // Number of panels per kW of system size
+  
+  // Get energy usage from assessment or use a fallback estimation
+  const energyUsageInfo = assessment?.energyUsage ? 
+    parseEnergyUsage(assessment.energyUsage) : 
+    { annualKWh: AVG_HOME_USAGE_KWH, monthlyBill: AVG_MONTHLY_BILL };
     
-    // Adjust system size based on selected plan
+  // Estimate system size based on energy usage
+  let systemSizeKW = 0;
+  let annualProduction = 0;
+  
+  if (energyUsageInfo.annualKWh) {
+    // 1300 kWh = average annual production per kW of solar in Northern Europe
+    systemSizeKW = Math.round((energyUsageInfo.annualKWh / 1300) * 10) / 10;
+    annualProduction = energyUsageInfo.annualKWh;
+  } else if (energyUsageInfo.monthlyBill) {
+    // Rough estimate based on bill: €0.25/kWh price in Northern Europe
+    const estimatedAnnualKWh = (energyUsageInfo.monthlyBill / 0.25) * 12;
+    systemSizeKW = Math.round((estimatedAnnualKWh / 1300) * 10) / 10;
+    annualProduction = estimatedAnnualKWh;
+  } else {
+    // Default case with no information
+    systemSizeKW = 5.0; // Default 5kW system
+    annualProduction = systemSizeKW * 1300;
+  }
+  
+  // Adjust based on selected plan
+  if (message.toLowerCase().includes('selected plan:')) {
+    const selectedPlan = message.toLowerCase().includes('basic') ? 'basic' : 
+                       message.toLowerCase().includes('premium') ? 'premium' : 'standard';
+    
     if (selectedPlan === 'basic') {
       // Basic plan covers ~25% of usage
       systemSizeKW = Math.round((systemSizeKW * 0.25) * 10) / 10;
@@ -364,7 +416,8 @@ const generateProposal = async (
     financingOptions,
     roofType: assessment?.roofType,
     panelType: 'Monocrystalline', // Default panel type
-    assessmentId: assessment?.id 
+    assessmentId: assessment?.id,
+    conversationId: conversationId || assessment?.conversationId // Include conversationId to link with appointment
   };
   
   return offer;
@@ -413,15 +466,22 @@ export const handleProposal = async (
   conversationHistory: ConversationTurn[] = []
 ): Promise<AgentResponse> => {
 
-  // Check for handoff first
-  const handoffCheck = checkForHandoff(message);
-  if (handoffCheck.needsHandoff && handoffCheck.nextAgent) {
-    return {
-      text: `I understand you're interested in ${handoffCheck.nextAgent === 'crm' ? 'scheduling an appointment' : 'getting more assessment details'}. Let me connect you with the right agent.`,
-      type: 'handoff',
-      nextAgent: handoffCheck.nextAgent as AgentType,
-      confidence: 0.9
-    };
+  // Only check for handoff if the message doesn't appear to be a direct proposal request
+  if (!message.toLowerCase().includes('proposal') && 
+      !message.toLowerCase().includes('quote') &&
+      !message.toLowerCase().includes('offer') &&
+      !message.toLowerCase().includes('plan')) {
+    
+    // Check for handoff
+    const handoffCheck = checkForHandoff(message);
+    if (handoffCheck.needsHandoff && handoffCheck.nextAgent) {
+      return {
+        text: `I understand you're interested in ${handoffCheck.nextAgent === 'crm' ? 'scheduling an appointment' : 'getting more assessment details'}. Let me connect you with the right agent.`,
+        type: 'handoff',
+        nextAgent: handoffCheck.nextAgent as AgentType,
+        confidence: 0.9
+      };
+    }
   }
 
   // 1. Fetch assessment using conversationId
@@ -456,7 +516,7 @@ export const handleProposal = async (
   const enhancedMessage = `${message} (Selected plan: ${selectedPlan})`;
 
   // 3. Perform calculations (generate the offer object)
-  const generatedOffer = await generateProposal(assessment, userEmail, enhancedMessage);
+  const generatedOffer = await generateProposal(assessment, userEmail, enhancedMessage, conversationId);
 
   // 4. Save proposal to proposalsContainer
   try {
@@ -477,7 +537,7 @@ export const handleProposal = async (
   // 6. Return response
   const response: AgentResponse = {
     text: responseText,
-    type: 'offer', // Use 'offer' type for potential UI formatting
+    type: 'offer', // Use 'offer' type for UI formatting
     confidence: 0.85, // High confidence as it's based on calculations
     nextAgent: 'crm', // Suggest CRM for next step after proposal
     data: {
@@ -485,7 +545,8 @@ export const handleProposal = async (
       feedbackOptions: {
         showOptions: true,
         options: ['helpful', 'not helpful']
-      }
+      },
+      conversationId // Add conversationId to make it available in frontend
     },
     reasoning: `Generated a ${selectedPlan} plan proposal based on your energy usage of ${assessment.energyUsage} and preferences.`
   };

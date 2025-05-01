@@ -386,7 +386,7 @@ function Chatbot() {
     if (message.role === 'user') {
       return <p>{message.content}</p>;
     }
-
+    
     // --- Handle Confirmation Type --- START
     if (message.type === 'confirmation') {
       const { details, prompt, buttons } = message.data || {};
@@ -447,14 +447,268 @@ function Chatbot() {
     // Assistant messages (non-confirmation)
     let formattedContent = message.content;
     // Basic Markdown to HTML conversion for offers and text
-    if (message.type === 'offer' || message.type === 'text') {
+    if (message.type === 'offer' || message.type === 'text' || message.type === 'handoff') {
+        // Convert headers first
+        formattedContent = formattedContent.replace(/^# (.*$)/gim, '<h3>$1</h3>');
         formattedContent = formattedContent.replace(/^### (.*$)/gim, '<h4>$1</h4>');
         formattedContent = formattedContent.replace(/^## (.*$)/gim, '<h3>$1</h3>');
+        // Convert bold text
         formattedContent = formattedContent.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+        // Preserve line breaks
         formattedContent = formattedContent.replace(/\n/g, '<br />');
+        // Remove any remaining hash symbols that might have been missed
+        formattedContent = formattedContent.replace(/#{1,3}\s+/g, '<b>');
+        formattedContent = formattedContent.replace(/#{1,3}$/g, '</b>');
     }
+    
+    if (message.type === 'offer' || (message.type === 'handoff' && message.content && message.content.includes('Solar System Proposal'))) {
+      console.log("Received proposal message:", message);
+      
+      // If it's a handoff but contains proposal content, override the type
+      if (message.type === 'handoff' && message.content.includes('Solar System Proposal')) {
+        console.log("Converting handoff message to offer type for styling");
+        message.type = 'offer';
+      }
+      
+      // Simple preprocessing to ensure # is properly formatted with spaces
+      if (message.content) {
+        // Basic preprocessing to normalize formatting
+        let processedContent = message.content;
+        processedContent = processedContent.replace(/#Solar/g, "# Solar");
+        processedContent = processedContent.replace(/###System/g, "### System");
+        processedContent = processedContent.replace(/###Financing/g, "### Financing");
+        processedContent = processedContent.replace(/###Environmental/g, "### Environmental");
+        
+        // Update content with fixed formatting
+        message.content = processedContent;
+      }
+      
+      // Format offer messages into a more structured layout
+      if (message.content) {
+        // Check if this is a proposal based on broad patterns
+        const isProposal = true; // Assume all offer messages are proposals
+        
+        if (isProposal) {
+          console.log("Processing proposal message:", message.content);
+          
+          // Extract introduction paragraph and title
+          let title = 'Solar System Proposal';
+          let intro = '';
+          
+          // Try to extract title from markdown heading
+          const titleMatch = message.content.match(/# ([^\n]+)/);
+          if (titleMatch) {
+            title = titleMatch[1];
+            intro = message.content.split(/###\s+System Details/i)[0]
+              .replace(/# [^\n]+\n\n/, '')
+              .trim();
+          } else {
+            // Alternate extraction if no markdown heading
+            intro = message.content.split(/System Details/i)[0].trim();
+          }
+          
+          // Create custom HTML structure for the entire proposal
+          const createProposalHtml = () => {
+            // Extract sections
+            const sections = {};
+            
+            // System Details section
+            const systemDetailsMatch = message.content.match(/System Details.*?\n([\s\S]*?)(?=Financing|Environmental|Note:|Would you|$)/is);
+            if (systemDetailsMatch) {
+              sections.systemDetails = systemDetailsMatch[1].trim();
+            }
+            
+            // Financing Options section
+            const financingMatch = message.content.match(/Financing Options.*?\n([\s\S]*?)(?=Environmental|Note:|Would you|$)/is);
+            if (financingMatch) {
+              sections.financing = financingMatch[1].trim();
+            }
+            
+            // Environmental Impact section
+            const envMatch = message.content.match(/Environmental Impact.*?\n([\s\S]*?)(?=Note:|Would you|$)/is);
+            if (envMatch) {
+              sections.environmental = envMatch[1].trim();
+            }
+            
+            // Extract final notes
+            const noteMatch = message.content.match(/Note:(.*?)(?=Would you|$)/is);
+            if (noteMatch) {
+              sections.note = noteMatch[1].trim();
+            }
+            
+            // Extract final question
+            const questionMatch = message.content.match(/Would you like(.*?)$/is);
+            if (questionMatch) {
+              sections.question = `Would you like${questionMatch[1].trim()}`;
+            }
+            
+            // Start building the HTML
+            let html = `
+              <div class="proposal-cards">
+                <div class="assessment-plan system-details">
+                  <h4>System Details</h4>
+                  ${parseDetails(sections.systemDetails)}
+                </div>
+            `;
+            
+            // Add financing options
+            if (sections.financing) {
+              const financingOptionsHtml = parseFinancingOptions(sections.financing);
+              html += `
+                <div class="financing-options">
+                  <h4>Financing Options</h4>
+                  ${financingOptionsHtml}
+                </div>
+              `;
+            }
+            
+            // Add environmental impact
+            if (sections.environmental) {
+              html += `
+                <div class="assessment-plan environmental-impact">
+                  <h4>Environmental Impact</h4>
+                  ${parseDetails(sections.environmental)}
+                </div>
+              `;
+            }
+            
+            // Close the cards div
+            html += `</div>`;
+            
+            // Add notes and questions
+            if (sections.note) {
+              html += `<p class="proposal-note"><em>Note: ${sections.note}</em></p>`;
+            }
+            if (sections.question) {
+              html += `<p class="proposal-question">${sections.question}</p>`;
+            }
+            
+            return html;
+          };
+          
+          // Helper function to parse details from text blocks
+          const parseDetails = (text) => {
+            if (!text) return '';
+            
+            return text.split('\n')
+              .filter(line => line.trim() !== '')
+              .map(line => {
+                // Try to find key-value pairs with flexible pattern matching
+                let key, value;
+                const dashMatch = line.match(/^-\s*(.*?):\s*(.*)/);
+                if (dashMatch) {
+                  key = dashMatch[1].trim();
+                  value = dashMatch[2].trim();
+                } else {
+                  // Try alternative pattern without dash
+                  const altMatch = line.match(/(.*?):\s*(.*)/);
+                  if (altMatch) {
+                    key = altMatch[1].trim();
+                    value = altMatch[2].trim();
+                  } else {
+                    return ''; // No key-value pattern found
+                  }
+                }
+                
+                return `
+                  <div class="assessment-plan-detail">
+                    <span class="label">${key}</span>
+                    <span class="value">${value}</span>
+                  </div>
+                `;
+              })
+              .join('');
+          };
+          
+          // Helper function to parse financing options
+          const parseFinancingOptions = (text) => {
+            if (!text) return '';
+            
+            // Extract options based on common patterns
+            const optionBlocks = [];
+            
+            // Try to find Purchase option
+            const purchaseMatch = text.match(/purchase[^*]*:([^*]+?)(?=loan|lease|$)/is);
+            if (purchaseMatch) {
+              optionBlocks.push({
+                type: 'purchase',
+                title: 'Purchase Option',
+                content: purchaseMatch[1].trim()
+              });
+            }
+            
+            // Try to find Loan option
+            const loanMatch = text.match(/loan[^*]*:([^*]+?)(?=purchase|lease|$)/is);
+            if (loanMatch) {
+              optionBlocks.push({
+                type: 'loan',
+                title: 'Loan Option',
+                content: loanMatch[1].trim()
+              });
+            }
+            
+            // Try to find Lease option
+            const leaseMatch = text.match(/lease[^*]*:([^*]+?)(?=purchase|loan|$)/is);
+            if (leaseMatch) {
+              optionBlocks.push({
+                type: 'lease',
+                title: 'Lease Option',
+                content: leaseMatch[1].trim()
+              });
+            }
+            
+            // If no options were found with the above pattern, try a simpler approach
+            if (optionBlocks.length === 0) {
+              // Split by double asterisks or just look for key financing terms
+              const terms = ['Purchase', 'Loan', 'Lease'];
+              terms.forEach(term => {
+                const regex = new RegExp(`\\*\\*${term}[^*]*\\*\\*:([^*]+?)(?=\\*\\*|$)`, 'is');
+                const match = text.match(regex);
+                if (match) {
+                  optionBlocks.push({
+                    type: term.toLowerCase(),
+                    title: `${term} Option`,
+                    content: match[1].trim()
+                  });
+                }
+              });
+            }
+            
+            // If still no options were found, use a very broad approach
+            if (optionBlocks.length === 0) {
+              console.log("Using fallback financing option parsing");
+              if (text.includes('Purchase') || text.includes('purchase')) {
+                optionBlocks.push({
+                  type: 'purchase',
+                  title: 'Purchase Option',
+                  content: text 
+                });
+              }
+            }
+            
+            // Format each option as a card
+            return optionBlocks.map(option => {
+              return `
+                <div class="assessment-plan ${option.type}">
+                  <h4>${option.title}</h4>
+                  ${parseDetails(option.content)}
+                </div>
+              `;
+            }).join('');
+          };
 
-    if (message.type === 'offer') {
+          // Render the proposal with our custom styling
+          return (
+            <div className="assessment-message offer-message proposal-message">
+              <h3 className="proposal-title">{title}</h3>
+              <p>{intro}</p>
+              <div dangerouslySetInnerHTML={{ __html: createProposalHtml() }} />
+            </div>
+          );
+        }
+      }
+      
+      // Default rendering for other offer messages
       return (
         <div className="offer-message">
           <div dangerouslySetInnerHTML={{ __html: formattedContent }} />
@@ -470,6 +724,69 @@ function Chatbot() {
       );
     }
     
+    // Format assessment messages into a more structured layout
+    if (message.content && message.content.includes('### Basic Plan') || 
+        message.content.includes('### Standard Plan') || 
+        message.content.includes('### Premium Plan')) {
+      
+      // Extract introduction paragraph
+      let intro = message.content.split('###')[0].trim();
+      
+      // Create structured HTML for the plans
+      const createPlanHtml = () => {
+        // Parse out the different plans
+        const planSections = message.content.match(/### (Basic|Standard|Premium) Plan[\s\S]*?(?=### |$)/g) || [];
+        
+        return planSections.map(plan => {
+          const planType = plan.match(/### (Basic|Standard|Premium) Plan/)[1].toLowerCase();
+          const planDetails = plan.replace(/### (Basic|Standard|Premium) Plan.*?\n/, '');
+          
+          // Extract key details using regex
+          const panelsMatch = planDetails.match(/\*\*Number of Panels:\*\* (\d+)/);
+          const sizeMatch = planDetails.match(/\*\*System Size:\*\* ([\d\.]+) kWp/);
+          const productionMatch = planDetails.match(/\*\*Estimated Annual Production:\*\* ([\d,\.]+) kWh/);
+          const usageMatch = planDetails.match(/\((\d+)% of your usage\)/);
+          const costMatch = planDetails.match(/\*\*Estimated Cost:\*\* €([\d,\.]+)/);
+          
+          const panels = panelsMatch ? panelsMatch[1] : "N/A";
+          const size = sizeMatch ? sizeMatch[1] : "N/A";
+          const production = productionMatch ? productionMatch[1] : "N/A";
+          const usage = usageMatch ? usageMatch[1] : "N/A";
+          const cost = costMatch ? costMatch[1] : "N/A";
+          
+          return `
+            <div class="assessment-plan ${planType}">
+              <h4>${planType.charAt(0).toUpperCase() + planType.slice(1)} Plan (${usageMatch ? usageMatch[1] + '% Coverage' : ''})</h4>
+              <div class="assessment-plan-detail">
+                <span class="label">Panels:</span>
+                <span class="value">${panels}</span>
+              </div>
+              <div class="assessment-plan-detail">
+                <span class="label">System Size:</span>
+                <span class="value">${size} kWp</span>
+              </div>
+              <div class="assessment-plan-detail">
+                <span class="label">Annual Production:</span>
+                <span class="value">${production} kWh (${usage}%)</span>
+              </div>
+              <div class="assessment-plan-detail">
+                <span class="label">Estimated Cost:</span>
+                <span class="value">€${cost}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      };
+
+      return (
+        <div className="assessment-message">
+          <p>{intro}</p>
+          <div dangerouslySetInnerHTML={{ __html: createPlanHtml() }} />
+          <p>Which plan would you be interested in? Or would you like a custom proposal?</p>
+        </div>
+      );
+    }
+
     // Add feedback component for text responses
     const showFeedback = message.type === 'text' && 
                          (message.confidence !== undefined ||
@@ -547,18 +864,18 @@ function Chatbot() {
                 disabled={loading || !input.trim() || editingConfirmationIndex !== null}
                 className="send-button"
               >
-                Send
-              </button>
-              {!isEmailSet && !emailSkipped && (
-                <button 
-                  type="button" 
-                  className="skip-button"
-                  onClick={skipEmail}
+              Send
+            </button>
+            {!isEmailSet && !emailSkipped && (
+              <button 
+                type="button" 
+                className="skip-button"
+                onClick={skipEmail}
                   disabled={loading}
-                >
-                  Skip
-                </button>
-              )}
+              >
+                Skip
+              </button>
+            )}
             </div>
           </form>
         </div>
