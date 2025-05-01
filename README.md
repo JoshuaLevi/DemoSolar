@@ -66,14 +66,15 @@ flowchart TD
     classDef secondary fill:#bbf,stroke:#333,stroke-width:1px
     classDef azure fill:#bfb,stroke:#333,stroke-width:1px
     classDef utility fill:#ffb,stroke:#333,stroke-width:1px
-    style Orchestrator fill:transparent
-    style API fill:#FFFFFF
+    style Orchestrator fill:#FFFFFF
+    style API fill:#FFFFFF,color:#000000
     style WebSearch color:#000000
     style FC color:#000000
     style AzSearch color:#000000
     style AzOpenAI color:#000000
     style CosmosDB color:#000000
-    style Frontend fill:#FFFFFF
+    style Frontend fill:#FFFFFF,color:#000000
+
 
 
 
