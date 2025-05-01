@@ -256,8 +256,8 @@ demosolar/
 
 1.  **Clone the repository:**
     ```bash
-    git clone <YOUR_REPO_URL_HERE> # Replace with your repo URL
-    cd <YOUR_REPO_FOLDER_NAME> # Replace with the repo folder name (e.g., demosolar)
+    git clone https://github.com/JoshuaLevi/DemoSolar
+    cd DemoSolar
     ```
 
 2.  **Install Backend Dependencies:**
@@ -269,8 +269,8 @@ demosolar/
 3.  **Install Frontend Dependencies:**
     ```bash
     cd ../frontend
-npm install
-```
+    npm install
+    ```
 
 4.  **Configure Backend Environment Variables:**
     *   Navigate back to the `backend` directory: `cd ../backend`
