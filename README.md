@@ -14,52 +14,64 @@ Based on prototype testing, systems like this could potentially deliver:
 The DemoSolar AI Agent System implements a multi-agent architecture that leverages Azure AI services:
 
 ```mermaid
-flowchart TB
-    User((Customer)) <--> FrontendUI[Frontend UI]
-    FrontendUI <--> BackendAPI[Backend API]
-    
-    subgraph "Agent System"
-        direction TB
-        BackendAPI --> Orchestrator
-        
-        Orchestrator[Orchestration Agent]
-        
-        Orchestrator --> SupportAgent[Customer Support Agent]
-        Orchestrator --> AssessmentAgent[Solar Assessment Agent]
-        Orchestrator --> ProposalAgent[Proposal Agent]
-        Orchestrator --> CRMAgent[CRM Agent]
-        
-        SupportAgent --> KnowledgeBase[(Knowledge Base)]
-        SupportAgent --> WebSearch{{Web Search}}
-        AssessmentAgent --> Tools{{External Tools}}
-        ProposalAgent --> Proposals[(Proposals DB)]
-        CRMAgent --> Appointments[(Appointments DB)]
-    end
-    
-    subgraph "Azure Services"
-        direction TB
-        KnowledgeBase -.-> AzureSearch[Azure AI Search]
-        WebSearch -.-> BraveAPI[Brave Search API]
-        Orchestrator & SupportAgent & AssessmentAgent & ProposalAgent & CRMAgent -.-> AzureOpenAI[Azure OpenAI]
-        Proposals & Appointments -.-> CosmosDB[(Azure Cosmos DB)]
-    end
-    
-    %% Styling
-    classDef user fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
-    classDef frontend fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
-    classDef agent fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
-    classDef primaryAgent fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
-    classDef database fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
-    classDef azure fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
-    classDef tool fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
-    
-    class User user
-    class FrontendUI,BackendAPI frontend
-    class Orchestrator primaryAgent
-    class SupportAgent,AssessmentAgent,ProposalAgent,CRMAgent agent
-    class KnowledgeBase,Proposals,Appointments database
-    class AzureSearch,AzureOpenAI,CosmosDB,BraveAPI azure
-    class WebSearch,Tools tool
+flowchart TD
+ subgraph subGraph0["Multi-Agent System"]
+        Orchestrator["Orchestration Agent"]
+        API["Backend API"]
+        CS["Customer Support Agent"]
+        SA["Solar Assessment Agent"]
+        PA["Proposal Agent"]
+        CRM["CRM Agent"]
+        KB[("Knowledge Base")]
+        WebSearch["Web Search"]
+        Tools["External Tools"]
+        Offers[("Proposals/Offers")]
+        Appointments[("Appointments")]
+  end
+ subgraph subGraph1["Feedback System"]
+        FC["Feedback Collection"]
+        User("User")
+        FeedbackDB[("Feedback Storage")]
+  end
+ subgraph subGraph2["Azure Services"]
+        AzSearch["Azure AI Search"]
+        BraveAPI["Brave Search API"]
+        AzOpenAI["Azure OpenAI"]
+        CosmosDB[("Azure Cosmos DB")]
+  end
+    User <--> Frontend["Frontend UI"]
+    Frontend <--> API
+    API --> Orchestrator
+    Orchestrator --> CS & SA & PA & CRM & AzOpenAI
+    CS --> KB & WebSearch
+    SA --> Tools
+    PA --> Offers
+    CRM --> Appointments
+    User --> FC
+    FC --> FeedbackDB
+    KB --> AzSearch
+    WebSearch --> BraveAPI
+    Tools --> AzOpenAI
+    CosmosDB --> Appointments & Offers & FeedbackDB
+
+     Orchestrator:::primary
+     API:::secondary
+     WebSearch:::utility
+     FC:::utility
+     AzSearch:::azure
+     AzOpenAI:::azure
+     CosmosDB:::azure
+     Frontend:::secondary
+    classDef primary fill:#f9f,stroke:#333,stroke-width:2px
+    classDef secondary fill:#bbf,stroke:#333,stroke-width:1px
+    classDef azure fill:#bfb,stroke:#333,stroke-width:1px
+    classDef utility fill:#ffb,stroke:#333,stroke-width:1px
+    style Orchestrator fill:transparent
+    style API fill:transparent
+    style Frontend fill:transparent
+
+
+
 ```
 
 The system architecture follows a multi-agent design:
