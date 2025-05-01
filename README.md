@@ -273,9 +273,9 @@ demosolar/
     ```
 
 4.  **Configure Backend Environment Variables:**
-    *   Navigate back to the `backend` directory: `cd ../backend`
-    *   Create a `.env` file by copying the example: `cp .env.example .env` (If `.env.example` doesn't exist, create `.env` manually).
-    *   Edit the `.env` file and fill in your specific Azure credentials:
+    * Navigate back to the `backend` directory: `cd ../backend`
+    * Create a `.env` file by copying the example: `cp .env.example .env` (If `.env.example` doesn't exist, create `.env` manually).
+    * Edit the `.env` file and fill in your specific Azure credentials:
         ```dotenv
         # Azure OpenAI
         AZURE_OPENAI_ENDPOINT="YOUR_AZURE_OPENAI_ENDPOINT"
@@ -301,29 +301,29 @@ demosolar/
         # Server Port (Optional)
         PORT=5001
         ```
-    *   **Important:** Ensure your Azure Cosmos DB instance has the following containers created with appropriate partition keys (examples provided above): `conversations`, `assessments`, `proposals`, `appointments`, `users`, `feedback`.
-    *   **Important:** Ensure your Azure AI Search index (`AZURE_SEARCH_INDEX_NAME`) exists and is populated with data for the RAG functionality.
+    * **Important:** Ensure your Azure Cosmos DB instance has the following containers created with appropriate partition keys (examples provided above): `conversations`, `assessments`, `proposals`, `appointments`, `users`, `feedback`.
+    * **Important:** Ensure your Azure AI Search index (`AZURE_SEARCH_INDEX_NAME`) exists and is populated with data for the RAG functionality.
 
 5.  **Start the Backend Server:**
-    *   Make sure you are in the `backend` directory.
-    *   Run the development server:
+    * Make sure you are in the `backend` directory.
+    * Run the development server:
         ```bash
-npm run dev
-```
-    *   The backend should now be running, typically on port 5001.
+        npm run dev
+        ```
+    * The backend should now be running, typically on port 5001.
 
 6.  **Start the Frontend Server:**
-    *   Open a **new terminal** window/tab.
-    *   Navigate to the `frontend` directory: `cd ../frontend` (adjust path if needed).
-    *   Run the development server:
+    * Open a **new terminal** window/tab.
+    * Navigate to the `frontend` directory: `cd ../frontend` (adjust path if needed).
+    * Run the development server:
         ```bash
-npm start
-```
-    *   This will usually open the application automatically in your default browser at `http://localhost:3000`.
+        npm start
+        ```
+    * This will usually open the application automatically in your default browser at `http://localhost:3000`.
 
 7.  **Access the Application:**
-    *   Open your browser and navigate to `http://localhost:3000` if it didn't open automatically.
-    *   You should see the homepage and the chatbot interface.
+    * Open your browser and navigate to `http://localhost:3000` if it didn't open automatically.
+    * You should see the homepage and the chatbot interface.
 
 ## 💡 Usage
 
