@@ -136,7 +136,7 @@ The solution employs multiple specialized agents that collaborate to provide a c
 - **CRM Agent**: Manages appointment scheduling and customer information
 
 ### 2. Agentic RAG (Retrieval-Augmented Generation)
-The Customer Support Agent uses a sophisticated RAG implementation to provide informed responses:
+The Customer Support Agent uses a RAG implementation to provide informed responses:
 - **Knowledge Retrieval**: Searches Azure AI Search vector database for relevant information
 - **Web Search Fallback**: When knowledge base is insufficient, uses Brave Search API
 - **Iterative Refinement**: Evaluates search results and refines queries for better answers
@@ -233,7 +233,7 @@ demosolar/
     └── ...
 ```
 
-## ✨ Features
+## Features
 
 ### Frontend
 - **Homepage**: Showcases services and benefits
@@ -262,7 +262,21 @@ demosolar/
 - **Appointment Booking**: Workflow with date recognition and validation
 - **Feedback Collection**: Storage for potential future improvements
 
-## 🚀 Getting Started
+## � Screenshots
+
+### Solar System Proposal Interface
+![DemoSolar Proposal](Screenshot%20DemoSolar%20Proposal.png)
+*The AI-powered proposal generation interface showing personalized solar system recommendations with detailed specifications and cost estimates.*
+
+### Appointment Scheduling System
+![DemoSolar Appointment](Screenshot%20DemoSolar%20Appointment.png)
+*The appointment booking system that handles consultation scheduling with natural language date recognition.*
+
+### CRM Dashboard
+![DemoSolar CRM](Screenshot%20DemoSolar%20CRM.png)
+*The CRM dashboard displaying customer interactions, quotes, and appointment management for sales teams.*
+
+## �🚀 Getting Started
 
 ### Prerequisites
 
